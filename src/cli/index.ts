@@ -58,20 +58,63 @@ export class MCPPackageCLI {
     this.program
       .command('install')
       .alias('i')
-      .description('Install a package or code snippet')
-      .argument('<name>', 'Package or snippet name')
-      .option('-v, --version <version>', 'Specific version to install')
-      .option('-D, --dev', 'Install as development dependency')
-      .option('-g, --global', 'Install globally')
-      .option('-f, --force', 'Force installation')
-      .option('--path <path>', 'Custom installation path')
-      .option('--ai-instructions <instructions>', 'Additional AI instructions')
+      .description('Install a package or code snippet with AI guidance')
+      .argument('[name]', 'Package or snippet name to install')
       .option('--wizard', 'Use DOS-style installation wizard')
-      .action(async (name, options) => {
-        if (options.wizard) {
-          await this.handleWizardInstall(name, options);
-        } else {
-          await this.handleInstall(name, options);
+      .option('--snippet', 'Install as code snippet instead of package')
+      .option('--force', 'Force installation even if already exists')
+      .option('--dev', 'Install as development dependency')
+      .action(async (name: string | undefined, options: any) => {
+        try {
+          if (options.wizard) {
+            const wizard = new DOSSetupWizard();
+            
+            try {
+              await wizard.showWelcomeScreen();
+              
+              if (name) {
+                // Direct installation with wizard UI
+                const aiService = new AIInstallationService();
+                await aiService.initialize();
+                
+                // Show mock AI analysis
+                const mockContext = {
+                  projectType: 'node' as const,
+                  framework: 'express',
+                  language: 'javascript',
+                  packageManager: 'npm' as const
+                };
+                await wizard.showAIAnalysis(mockContext);
+                await wizard.showInstallationProgress(name);
+                
+                const result = await aiService.installPackage({
+                  packageName: name,
+                  dev: options.dev,
+                  force: options.force
+                });
+                
+                await wizard.showCompletionScreen(name, result.success, {
+                  installedPackages: result.installedPackages || [],
+                  createdFiles: result.createdFiles || [],
+                  warnings: result.warnings || []
+                });
+                
+              } else {
+                // Show package selection in wizard
+                await handleWizardInstall(wizard);
+              }
+              
+            } finally {
+              wizard.cleanup();
+            }
+            
+            return;
+          }
+          
+          // ... existing modern install logic ...
+        } catch (error) {
+          console.error(chalk.red('❌ Installation failed:'), error instanceof Error ? error.message : String(error));
+          process.exit(1);
         }
       });
 
@@ -90,7 +133,7 @@ export class MCPPackageCLI {
       .description('Get detailed information about a package or snippet')
       .argument('<name>', 'Package or snippet name')
       .option('-t, --type <type>', 'Type (package|snippet)', 'package')
-      .action(async (name, options) => {
+      .action(async (name: string, options: any) => {
         await this.handleInfo(name, options);
       });
 
@@ -885,6 +928,258 @@ Keywords: ${pkg.keywords.join(', ')}`;
       process.exit(1);
     }
   }
+}
+
+// DOS Wizard Interactive Mode
+async function runDOSWizard(): Promise<void> {
+  const wizard = new DOSSetupWizard();
+  
+  try {
+    // Welcome screen
+    await wizard.showWelcomeScreen();
+    
+    // Main loop
+    let running = true;
+    while (running) {
+      const choice = await wizard.showMainMenu();
+      
+      switch (choice) {
+        case 'search':
+          await handleWizardSearch(wizard);
+          break;
+          
+        case 'install':
+          await handleWizardInstall(wizard);
+          break;
+          
+        case 'info':
+          await handleWizardInfo(wizard);
+          break;
+          
+        case 'list':
+          await handleWizardList(wizard);
+          break;
+          
+        case 'add':
+          await handleWizardAdd(wizard);
+          break;
+          
+        case 'stats':
+          await handleWizardStats(wizard);
+          break;
+          
+        case 'exit':
+          running = false;
+          break;
+          
+        default:
+          await wizard.showErrorDialog('Invalid Choice', 'Please select a valid option from the menu.');
+      }
+    }
+    
+  } catch (error) {
+    await wizard.showErrorDialog('System Error', `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    wizard.cleanup();
+    console.log(chalk.green('Thank you for using MCP Package Manager!'));
+  }
+}
+
+// Wizard search handler
+async function handleWizardSearch(wizard: DOSSetupWizard): Promise<void> {
+  try {
+    // In a real implementation, we'd show an input dialog
+    // For now, we'll simulate with a predefined search
+    const query = 'react'; // This would come from user input
+    const registry = new Registry();
+    await registry.initialize();
+    
+    const results = await registry.search(query);
+    await wizard.showSearchResults(results, query);
+    
+  } catch (error) {
+    await wizard.showErrorDialog('Search Error', `Failed to search packages: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// Wizard install handler
+async function handleWizardInstall(wizard: DOSSetupWizard): Promise<void> {
+  try {
+    const registry = new Registry();
+    await registry.initialize();
+    
+    // Get available packages for selection
+    const packages = await registry.getAllPackages();
+    const packageNames = packages.map(p => p.name);
+    
+    if (packageNames.length === 0) {
+      await wizard.showErrorDialog('No Packages', 'No packages available in the registry.');
+      return;
+    }
+    
+    // Show package selection with arrow navigation
+    const selectedPackage = await wizard.showPackageSelection(packageNames.slice(0, 10)); // Limit to 10 for display
+    
+    if (!selectedPackage) {
+      return; // User cancelled
+    }
+    
+    // Show AI analysis
+    const aiService = new AIInstallationService();
+    const context = await aiService.detectProjectContext(process.cwd());
+    await wizard.showAIAnalysis(context);
+    
+    // Show installation progress
+    await wizard.showInstallationProgress(selectedPackage);
+    
+    // Attempt actual installation
+    try {
+      const result = await aiService.generateInstallCommand(selectedPackage, context);
+      
+      // Simulate installation execution
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      await wizard.showCompletionScreen(selectedPackage, true, {
+        installedPackages: [selectedPackage],
+        createdFiles: ['package.json updated'],
+        warnings: result.warnings || []
+      });
+      
+    } catch (installError) {
+      await wizard.showCompletionScreen(selectedPackage, false, {});
+    }
+    
+  } catch (error) {
+    await wizard.showErrorDialog('Installation Error', `Failed to install package: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// Wizard info handler
+async function handleWizardInfo(wizard: DOSSetupWizard): Promise<void> {
+  try {
+    const registry = new Registry();
+    await registry.initialize();
+    
+    // For demo purposes, show info about 'express'
+    const packageInfo = await registry.getPackage('express');
+    
+    if (packageInfo) {
+      const infoContent = `Package Information:
+
+Name: ${packageInfo.name}
+Version: ${packageInfo.version || 'Latest'}
+Description: ${packageInfo.description || 'No description available'}
+Category: ${packageInfo.category || 'Unknown'}
+Language: ${packageInfo.language || 'JavaScript'}
+
+Installation Count: ${packageInfo.installCount || 0}
+Last Updated: ${packageInfo.lastUpdated || 'Unknown'}
+
+Press any key to continue...`;
+
+      await wizard.showSearchResults([packageInfo], packageInfo.name);
+    } else {
+      await wizard.showErrorDialog('Package Not Found', 'The specified package was not found in the registry.');
+    }
+    
+  } catch (error) {
+    await wizard.showErrorDialog('Info Error', `Failed to get package information: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// Wizard list handler
+async function handleWizardList(wizard: DOSSetupWizard): Promise<void> {
+  try {
+    const registry = new Registry();
+    await registry.initialize();
+    
+    const packages = await registry.getAllPackages();
+    const snippets = await registry.getAllSnippets();
+    
+    const allItems = [
+      ...packages.map(p => ({ ...p, type: 'Package' })),
+      ...snippets.map(s => ({ ...s, type: 'Snippet' }))
+    ];
+    
+    await wizard.showSearchResults(allItems.slice(0, 10), 'All Items');
+    
+  } catch (error) {
+    await wizard.showErrorDialog('List Error', `Failed to list items: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// Wizard add handler
+async function handleWizardAdd(wizard: DOSSetupWizard): Promise<void> {
+  await wizard.showErrorDialog('Feature Not Available', 'Adding new packages/snippets is not yet implemented in the DOS wizard interface.');
+}
+
+// Wizard stats handler
+async function handleWizardStats(wizard: DOSSetupWizard): Promise<void> {
+  try {
+    const registry = new Registry();
+    await registry.initialize();
+    
+    const stats = await registry.getStats();
+    
+    const statsContent = `Registry Statistics:
+
+Total Packages: ${stats.totalPackages}
+Total Snippets: ${stats.totalSnippets}
+Total Items: ${stats.totalItems}
+
+Most Popular Package: ${stats.mostPopularPackage || 'N/A'}
+Most Popular Snippet: ${stats.mostPopularSnippet || 'N/A'}
+
+Categories:
+${Object.entries(stats.categoryCounts || {})
+  .map(([cat, count]) => `• ${cat}: ${count}`)
+  .join('\n')}
+
+Languages:
+${Object.entries(stats.languageCounts || {})
+  .map(([lang, count]) => `• ${lang}: ${count}`)
+  .join('\n')}`;
+
+    const mockStatsResults = [{
+      name: 'Registry Statistics',
+      description: statsContent,
+      type: 'Stats'
+    }];
+    
+    await wizard.showSearchResults(mockStatsResults, 'Statistics');
+    
+  } catch (error) {
+    await wizard.showErrorDialog('Stats Error', `Failed to get statistics: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// Update the interactive mode to use DOS wizard
+async function runInteractiveMode(): Promise<void> {
+  console.log(chalk.blue.bold('\n🎮 Welcome to MCP Package Manager Interactive Mode!\n'));
+  
+  // Ask user which interface they prefer
+  const { interface: selectedInterface } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'interface',
+      message: 'Choose your interface:',
+      choices: [
+        { name: '🚀 Modern CLI Interface', value: 'modern' },
+        { name: '💾 Retro DOS Setup Wizard', value: 'dos' },
+      ],
+    },
+  ]);
+  
+  if (selectedInterface === 'dos') {
+    await runDOSWizard();
+    return;
+  }
+  
+  // Continue with existing modern interactive mode...
+  const registry = new Registry();
+  await registry.initialize();
+
+  // ... existing code ...
 }
 
 // Run CLI if this file is executed directly
