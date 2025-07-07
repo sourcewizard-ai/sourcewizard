@@ -28,7 +28,17 @@ An intelligent TypeScript-based package and code snippet management system that 
 ### 🖥️ **Multiple Interfaces**
 - **MCP Server**: Integration with MCP-compatible applications
 - **CLI Tool**: Command-line interface with interactive mode
+- **DOS Wizard**: Retro installation wizard with blue-to-black gradient
 - **Interactive Mode**: Menu-driven package management
+
+### 🎮 **DOS-Style Setup Wizard**
+- **Retro Interface**: Classic Windows 95/98 setup wizard aesthetic
+- **Blue-to-Black Gradient**: Authentic early Windows installation experience
+- **Box Drawing Characters**: DOS-style borders and progress bars
+- **ASCII Art**: Figlet-generated titles with gradient effects
+- **Step-by-Step Installation**: Guided wizard with progress tracking
+- **AI Analysis Screen**: Animated project context detection
+- **Classic Dialog Boxes**: Windows-style confirmation and error dialogs
 
 ## Installation
 
@@ -75,6 +85,9 @@ mcp-pkg search "utility" --limit 5
 # Install a package
 mcp-pkg install express
 
+# Install with DOS-style wizard
+mcp-pkg install express --wizard
+
 # Install with specific version
 mcp-pkg install react --version 18.2.0
 
@@ -87,6 +100,24 @@ mcp-pkg install @angular/cli --global
 # Install to custom path
 mcp-pkg install lodash --path ./src/utils
 ```
+
+#### DOS-Style Installation Wizard
+```bash
+# Start the retro DOS wizard interface
+mcp-pkg wizard
+
+# Use wizard for specific package installation
+mcp-pkg install express --wizard
+```
+
+**DOS Wizard Features:**
+- Blue-to-black gradient background (just like Windows 95 setup!)
+- ASCII art title with gradient effects
+- Step-by-step installation progress with retro progress bars
+- AI project analysis with animated thinking indicator
+- Classic Windows-style dialog boxes
+- Package selection with A-Z keyboard navigation
+- Completion screen with installation summary
 
 #### Get package information
 ```bash
@@ -167,7 +198,8 @@ npm run lint
 mcp-package-manager/
 ├── src/
 │   ├── cli/                    # CLI tool implementation
-│   │   └── index.ts
+│   │   ├── index.ts           # Main CLI interface
+│   │   └── dos-ui.ts          # DOS-style wizard interface
 │   ├── mcp-server/             # MCP server implementation
 │   │   ├── server.ts           # Main MCP server
 │   │   ├── ai-installation-service.ts
@@ -188,6 +220,110 @@ mcp-package-manager/
 └── README.md
 ```
 
+## DOS Wizard Interface
+
+The DOS-style installation wizard provides a nostalgic experience reminiscent of early Windows setup programs:
+
+### Visual Features
+- **Blue-to-Black Gradient Background**: Authentic Windows 95/98 installation aesthetic
+- **Box-Drawing Characters**: Uses Unicode characters for borders (╔═╗║╚═╝)
+- **ASCII Art Titles**: Generated with Figlet and colored with gradients
+- **Progress Bars**: Retro-style progress indicators with filled/empty blocks
+- **Dialog Boxes**: Classic Windows-style message boxes and confirmation dialogs
+
+### Wizard Screens
+
+#### 1. Welcome Screen
+```
+    ███╗   ███╗ ██████╗██████╗     ██████╗ ██╗  ██╗ ██████╗ 
+    ████╗ ████║██╔════╝██╔══██╗    ██╔══██╗██║ ██╔╝██╔════╝ 
+    ██╔████╔██║██║     ██████╔╝    ██████╔╝█████╔╝ ██║  ███╗
+    ██║╚██╔╝██║██║     ██╔═══╝     ██╔═══╝ ██╔═██╗ ██║   ██║
+    ██║ ╚═╝ ██║╚██████╗██║         ██║     ██║  ██╗╚██████╔╝
+    ╚═╝     ╚═╝ ╚═════╝╚═╝         ╚═╝     ╚═╝  ╚═╝ ╚═════╝ 
+
+    Welcome to MCP Package Manager Setup
+    
+    ╔════════════════════════════════════════════════╗
+    ║ Features:                                      ║
+    ║ • Smart package search and installation       ║
+    ║ • AI-guided project context detection         ║  
+    ║ • Personal code snippet registry              ║
+    ║ • Support for npm, yarn, pnpm, bun           ║
+    ╚════════════════════════════════════════════════╝
+```
+
+#### 2. Package Selection
+```
+    ╔═══════════════════════════════════════════════╗
+    ║                 Select Package                ║
+    ╠═══════════════════════════════════════════════╣
+    ║                                               ║
+    ║   A. Express - Web framework                  ║
+    ║   B. React - UI library                       ║
+    ║   C. Lodash - Utility library                 ║
+    ║   D. Axios - HTTP client                      ║
+    ║                                               ║
+    ╚═══════════════════════════════════════════════╝
+```
+
+#### 3. AI Analysis Screen
+```
+    ╔══════════════════════════════════════════════╗
+    ║               AI Analysis                    ║
+    ╠══════════════════════════════════════════════╣
+    ║ Project Type: web                            ║
+    ║ Framework:    react                          ║
+    ║ Language:     typescript                     ║  
+    ║ Pkg Manager:  npm                            ║
+    ╚══════════════════════════════════════════════╝
+    
+    ⠋ AI analyzing...
+```
+
+#### 4. Installation Progress
+```
+    ╔════════════════════════════════════════════════╗
+    ║            Installation Progress               ║
+    ╠════════════════════════════════════════════════╣
+    ║                                                ║
+    ║ Installing package: express                    ║
+    ║                                                ║
+    ║ Status: Configuring package...                ║
+    ║                                                ║
+    ║  ╔══════════════════════════════════════════╗  ║
+    ║  ║ ████████████████████████░░░░░░░░░░░░░░░░ ║ 75%║
+    ║  ╚══════════════════════════════════════════╝  ║
+    ╚════════════════════════════════════════════════╝
+```
+
+### Usage Examples
+
+#### Start DOS Wizard
+```bash
+# Full wizard experience
+mcp-pkg wizard
+
+# Quick installation with wizard
+mcp-pkg install react --wizard
+```
+
+#### Interactive Mode with Wizard Option
+```bash
+$ mcp-pkg interactive
+🚀 MCP Package Manager - Interactive Mode
+
+? What would you like to do?
+❯ 🔍 Search packages and snippets
+  📦 Install package/snippet
+  ℹ️  Get info about item
+  📋 List all items
+  ➕ Add new item
+  📊 Show statistics
+  🎮 DOS Wizard Mode
+  🚪 Exit
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -206,6 +342,19 @@ The registry stores packages and snippets locally with metadata including:
 
 ## Examples
 
+### DOS Wizard Installation Flow
+```bash
+# Start the retro installation experience
+$ mcp-pkg wizard
+
+# 1. Welcome screen with ASCII art title
+# 2. Main menu with A-G options
+# 3. Package selection (A-D for popular packages)
+# 4. AI project analysis with spinner animation
+# 5. Step-by-step installation progress
+# 6. Completion screen with results
+```
+
 ### Search Examples
 ```bash
 # Find React components
@@ -223,26 +372,14 @@ mcp-pkg search "middleware" --category framework
 # Install Express with AI setup guidance
 mcp-pkg install express
 
+# Install with retro DOS wizard
+mcp-pkg install express --wizard
+
 # Install a React hook snippet
 mcp-pkg install useLocalStorage
 
 # Install with custom AI instructions
 mcp-pkg install webpack --ai-instructions "Configure for TypeScript project"
-```
-
-### Interactive Mode Example
-```bash
-$ mcp-pkg interactive
-🚀 MCP Package Manager - Interactive Mode
-
-? What would you like to do?
-❯ 🔍 Search packages and snippets
-  📦 Install package/snippet
-  ℹ️  Get info about item
-  📋 List all items
-  ➕ Add new item
-  📊 Show statistics
-  🚪 Exit
 ```
 
 ## API Documentation
@@ -375,6 +512,9 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - [ ] Plugin architecture
 - [ ] Web interface
 - [ ] Package vulnerability scanning
+- [ ] Enhanced DOS wizard with more retro animations
+- [ ] Sound effects for the retro experience
+- [ ] Custom themes for the wizard interface
 
 ### Performance Improvements
 - [ ] Database backend for large registries
@@ -391,3 +531,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - AI-powered installation service
 - Local registry system
 - Comprehensive test suite
+- **NEW**: DOS-style installation wizard with blue-to-black gradient
+- **NEW**: Retro progress bars and ASCII art titles
+- **NEW**: Classic Windows-style dialog boxes

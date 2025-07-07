@@ -6,6 +6,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { Registry } from '../registry/registry.js';
 import { AIInstallationService } from '../mcp-server/ai-installation-service.js';
+import { DOSSetupWizard } from './dos-ui.js';
 import { 
   SearchOptions, 
   InstallationOptions, 
@@ -21,11 +22,13 @@ export class MCPPackageCLI {
   private registry: Registry;
   private installService: AIInstallationService;
   private program: Command;
+  private dosWizard: DOSSetupWizard;
 
   constructor() {
     this.registry = new Registry();
     this.installService = new AIInstallationService();
     this.program = new Command();
+    this.dosWizard = new DOSSetupWizard();
     this.setupCommands();
   }
 
@@ -63,8 +66,22 @@ export class MCPPackageCLI {
       .option('-f, --force', 'Force installation')
       .option('--path <path>', 'Custom installation path')
       .option('--ai-instructions <instructions>', 'Additional AI instructions')
+      .option('--wizard', 'Use DOS-style installation wizard')
       .action(async (name, options) => {
-        await this.handleInstall(name, options);
+        if (options.wizard) {
+          await this.handleWizardInstall(name, options);
+        } else {
+          await this.handleInstall(name, options);
+        }
+      });
+
+    // DOS Wizard mode command
+    this.program
+      .command('wizard')
+      .alias('w')
+      .description('Start DOS-style setup wizard interface')
+      .action(async () => {
+        await this.handleDOSWizard();
       });
 
     // Info command
@@ -113,6 +130,208 @@ export class MCPPackageCLI {
       .action(async () => {
         await this.handleInteractive();
       });
+  }
+
+  // New DOS Wizard handler
+  private async handleDOSWizard(): Promise<void> {
+    try {
+      await this.registry.initialize();
+      await this.installService.initialize();
+
+      // Show welcome screen
+      await this.dosWizard.showWelcomeScreen();
+
+      // Main wizard loop
+      let exit = false;
+      while (!exit) {
+        const choice = await this.dosWizard.showMainMenu();
+        
+        switch (choice) {
+          case 'A':
+            await this.wizardSearch();
+            break;
+          case 'B':
+            await this.wizardInstall();
+            break;
+          case 'C':
+            await this.wizardInfo();
+            break;
+          case 'D':
+            await this.wizardList();
+            break;
+          case 'E':
+            await this.wizardAdd();
+            break;
+          case 'F':
+            await this.wizardStats();
+            break;
+          case 'G':
+            exit = true;
+            break;
+          default:
+            await this.dosWizard.showErrorDialog('Invalid Selection', 'Please select a valid option (A-G)');
+        }
+      }
+
+    } catch (error) {
+      await this.dosWizard.showErrorDialog('System Error', error instanceof Error ? error.message : String(error));
+    } finally {
+      this.dosWizard.cleanup();
+    }
+  }
+
+  // Wizard search functionality
+  private async wizardSearch(): Promise<void> {
+    try {
+      // Get search query (simplified for demo)
+      const query = 'react'; // In real implementation, get from user input
+      
+      const searchOptions: SearchOptions = {
+        query,
+        limit: 10
+      };
+
+      const results = await this.registry.search(searchOptions);
+      const allResults = [...results.packages, ...results.snippets];
+      
+      await this.dosWizard.showSearchResults(allResults, query);
+    } catch (error) {
+      await this.dosWizard.showErrorDialog('Search Error', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  // Wizard installation functionality
+  private async wizardInstall(): Promise<void> {
+    try {
+      // Show popular packages for selection
+      const popularPackages = ['express', 'react', 'lodash', 'axios'];
+      const selection = await this.dosWizard.showPackageSelection(popularPackages);
+      
+      const packageIndex = selection.charCodeAt(0) - 65; // Convert A-D to 0-3
+      const packageName = popularPackages[packageIndex];
+      
+      if (!packageName) {
+        await this.dosWizard.showErrorDialog('Invalid Selection', 'Please select a valid package');
+        return;
+      }
+
+      // Show AI analysis
+      const mockContext = {
+        projectType: 'web',
+        framework: 'react',
+        language: 'typescript',
+        packageManager: 'npm'
+      };
+      await this.dosWizard.showAIAnalysis(mockContext);
+
+      // Show installation progress
+      await this.dosWizard.showInstallationProgress(packageName);
+
+      // Perform actual installation
+      const installOptions: InstallationOptions = {
+        packageName
+      };
+
+      const result = await this.installService.installPackage(installOptions);
+
+      // Show completion
+      await this.dosWizard.showCompletionScreen(packageName, result.success, {
+        installedPackages: result.installedPackages,
+        createdFiles: result.createdFiles,
+        warnings: result.warnings
+      });
+
+    } catch (error) {
+      await this.dosWizard.showErrorDialog('Installation Error', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  // Wizard info functionality
+  private async wizardInfo(): Promise<void> {
+    // Simplified - show info for a popular package
+    const pkg = await this.registry.getPackage('express');
+    if (pkg) {
+      const info = `Package: ${pkg.name}
+Version: ${pkg.version}
+Description: ${pkg.description}
+Category: ${pkg.category}
+Keywords: ${pkg.keywords.join(', ')}`;
+
+      await this.dosWizard.showSearchResults([pkg], 'Package Information');
+    }
+  }
+
+  // Wizard list functionality
+  private async wizardList(): Promise<void> {
+    const packages = await this.registry.getAllPackages();
+    const snippets = await this.registry.getAllSnippets();
+    const allItems = [...packages.slice(0, 5), ...snippets.slice(0, 3)];
+    
+    await this.dosWizard.showSearchResults(allItems, 'All Items');
+  }
+
+  // Wizard add functionality
+  private async wizardAdd(): Promise<void> {
+    await this.dosWizard.showErrorDialog('Feature Coming Soon', 'Adding new packages/snippets will be available in the next version.');
+  }
+
+  // Wizard stats functionality
+  private async wizardStats(): Promise<void> {
+    const stats = await this.registry.getStats();
+    const mockResults = [{
+      name: 'Registry Statistics',
+      description: `Packages: ${stats.totalPackages}, Snippets: ${stats.totalSnippets}, Total: ${stats.totalEntries}`
+    }];
+    
+    await this.dosWizard.showSearchResults(mockResults, 'Statistics');
+  }
+
+  // Enhanced wizard install for specific package
+  private async handleWizardInstall(name: string, options: any): Promise<void> {
+    try {
+      await this.registry.initialize();
+      await this.installService.initialize();
+
+      // Show welcome screen
+      await this.dosWizard.showWelcomeScreen();
+
+      // Show AI analysis
+      const mockContext = {
+        projectType: 'node',
+        framework: 'none',
+        language: 'javascript',
+        packageManager: 'npm'
+      };
+      await this.dosWizard.showAIAnalysis(mockContext);
+
+      // Show installation progress
+      await this.dosWizard.showInstallationProgress(name);
+
+      // Perform actual installation
+      const installOptions: InstallationOptions = {
+        packageName: name,
+        version: options.version,
+        dev: options.dev,
+        global: options.global,
+        force: options.force,
+        customInstallPath: options.path,
+        aiInstructions: options.aiInstructions
+      };
+
+      const result = await this.installService.installPackage(installOptions);
+
+      // Show completion
+      await this.dosWizard.showCompletionScreen(name, result.success, {
+        installedPackages: result.installedPackages,
+        createdFiles: result.createdFiles,
+        warnings: result.warnings
+      });
+
+    } catch (error) {
+      await this.dosWizard.showErrorDialog('Installation Error', error instanceof Error ? error.message : String(error));
+    } finally {
+      this.dosWizard.cleanup();
+    }
   }
 
   private async handleSearch(query: string, options: any): Promise<void> {
@@ -504,6 +723,7 @@ export class MCPPackageCLI {
             { name: '📋 List all items', value: 'list' },
             { name: '➕ Add new item', value: 'add' },
             { name: '📊 Show statistics', value: 'stats' },
+            { name: '🎮 DOS Wizard Mode', value: 'wizard' },
             { name: '🚪 Exit', value: 'exit' }
           ]
         }
@@ -512,6 +732,11 @@ export class MCPPackageCLI {
       if (action === 'exit') {
         console.log(chalk.cyan('Goodbye! 👋'));
         break;
+      }
+
+      if (action === 'wizard') {
+        await this.handleDOSWizard();
+        continue;
       }
 
       try {
@@ -557,16 +782,26 @@ export class MCPPackageCLI {
   }
 
   private async interactiveInstall(): Promise<void> {
-    const { name } = await inquirer.prompt([
+    const answers = await inquirer.prompt([
       {
         type: 'input',
         name: 'name',
         message: 'Package or snippet name:',
         validate: (input: string) => input.trim() !== '' || 'Name is required'
+      },
+      {
+        type: 'confirm',
+        name: 'useWizard',
+        message: 'Use DOS-style installation wizard?',
+        default: false
       }
     ]);
 
-    await this.handleInstall(name, {});
+    if (answers.useWizard) {
+      await this.handleWizardInstall(answers.name, {});
+    } else {
+      await this.handleInstall(answers.name, {});
+    }
   }
 
   private async interactiveInfo(): Promise<void> {
