@@ -28,6 +28,7 @@
     "boxen": "^5.1.2",
     "chalk": "^4.1.2",
     "figlet": "^1.7.0",
+    "fullscreen-ink": "^0.0.2",
     "gradient-string": "^2.0.2",
     "ink": "^6.0.1",
     "ink-big-text": "^1.2.0",

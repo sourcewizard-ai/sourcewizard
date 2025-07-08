@@ -20,6 +20,7 @@ import {
   AppLayout,
 } from "./components/index.js";
 import type { AppState, PageMetadata } from "./components/index.js";
+import { withFullScreen } from "fullscreen-ink";
 
 const App: React.FC = () => {
   const { exit } = useApp();
@@ -172,13 +173,16 @@ const App: React.FC = () => {
       case "error":
         return getErrorMetadata(state.errorTitle || "Error");
       case "search-results":
-        return getSearchResultsMetadata(state.searchQuery || "", state.searchResults.length);
+        return getSearchResultsMetadata(
+          state.searchQuery || "",
+          state.searchResults.length
+        );
       default:
         return welcomeMetadata;
     }
   };
 
-    // Render page content
+  // Render page content
   const renderPageContent = () => {
     switch (state.screen) {
       case "welcome":
@@ -248,7 +252,7 @@ const App: React.FC = () => {
   const metadata = getPageMetadata();
 
   return (
-    <AppLayout 
+    <AppLayout
       title={metadata.title}
       menuTitle={metadata.menuTitle}
       menuWidth={metadata.menuWidth}
@@ -261,6 +265,6 @@ const App: React.FC = () => {
 
 export const DOSSetupWizardInk = {
   start: () => {
-    render(<App />);
+    withFullScreen(<App />).start();
   },
 };

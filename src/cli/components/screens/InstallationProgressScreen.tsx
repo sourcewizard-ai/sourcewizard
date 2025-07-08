@@ -1,5 +1,5 @@
 import React from "react";
-import { Text } from "ink";
+import { Box, Text } from "ink";
 import { ProgressBar } from "../ui/index.js";
 import type { PageMetadata } from "../types.js";
 
@@ -13,16 +13,14 @@ export const installationProgressMetadata: PageMetadata = {
   title: "MCP Package Manager - Installing",
   menuTitle: "Installation in Progress",
   menuWidth: 60,
-  borderColor: "cyan"
+  borderColor: "cyan",
 };
 
-export const InstallationProgressScreen: React.FC<InstallationProgressScreenProps> = ({
-  packageName,
-  step,
-  steps,
-}) => {
+export const InstallationProgressScreen: React.FC<
+  InstallationProgressScreenProps
+> = ({ packageName, step, steps }) => {
   return (
-    <>
+    <Box flexDirection="column" justifyContent="center">
       <Text color="white">
         Installing package:{" "}
         <Text color="green" bold>
@@ -30,9 +28,7 @@ export const InstallationProgressScreen: React.FC<InstallationProgressScreenProp
         </Text>
       </Text>
       <Text> </Text>
-      <Text color="gray">
-        Please wait while the package is being installed
-      </Text>
+      <Text color="gray">Please wait while the package is being installed</Text>
       <Text color="gray">and configured for your project...</Text>
       <Text> </Text>
       <Text color="white">
@@ -40,7 +36,7 @@ export const InstallationProgressScreen: React.FC<InstallationProgressScreenProp
       </Text>
       <Text color="yellow">{steps[step - 1]}</Text>
       <Text> </Text>
-      <ProgressBar current={step} total={steps.length} />
-    </>
+      <ProgressBar current={step} total={steps.length} width="100%" />
+    </Box>
   );
-}; 
+};

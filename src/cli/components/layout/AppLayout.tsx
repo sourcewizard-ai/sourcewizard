@@ -9,61 +9,62 @@ interface AppLayoutProps {
   borderColor?: string;
 }
 
-export const AppLayout: React.FC<AppLayoutProps> = ({ 
-  title, 
+export const AppLayout: React.FC<AppLayoutProps> = ({
+  title,
   menuTitle,
-  children, 
+  children,
   menuWidth = 80,
-  borderColor = "cyan"
+  borderColor = "cyan",
 }) => {
   return (
-    <Box flexDirection="column" height="100%">
-      {/* Header */}
-      <Box
-        backgroundColor="blue"
-        borderStyle="double"
-        borderColor="blue"
-        padding={1}
-        justifyContent="center"
-      >
-        <Text color="white" bold>
-          {title}
-        </Text>
-      </Box>
+    // <Box flexDirection="column" height="100%">
+    //   {/* Header */}
+    //   <Box
+    //     backgroundColor="blue"
+    //     borderStyle="double"
+    //     borderColor="blue"
+    //     padding={1}
+    //     justifyContent="center"
+    //   >
+    //     <Text color="white" bold>
+    //       {title}
+    //     </Text>
+    //   </Box>
 
-      {/* Main content area with gradient background */}
-      <Box 
-        flexDirection="column" 
-        height="100%" 
-        padding={2} 
-        backgroundColor="linear-gradient"
-      >
-        <Box justifyContent="center" alignItems="center" height="100%">
-          {/* Menu Box Container */}
-          <Box
-            backgroundColor="gray"
-            borderStyle="single"
-            borderColor={borderColor}
-            padding={2}
-            width={menuWidth}
-            flexDirection="column"
-          >
-            {menuTitle && (
-              <>
-                <Text color={borderColor} bold>
-                  {menuTitle}
-                </Text>
-                <Text> </Text>
-              </>
-            )}
+    // {/* Main content area with gradient background */}
+    <Box
+      flexDirection="column"
+      height="100%"
+      width="100%"
+      justifyContent="center"
+      alignItems="center"
+      backgroundColor="linear-gradient"
+    >
+      {/* Menu Box Container */}
+      <Box>
+        <Box backgroundColor="#000" paddingRight={1} paddingBottom={1}>
+          <Box flexDirection="column" backgroundColor="#C0C7C8" padding={2}>
             {children}
-            <Text> </Text>
-            <Text color="gray">
-              Use ↑↓ arrows to navigate, ENTER to select, ESC to exit
-            </Text>
           </Box>
         </Box>
       </Box>
+      {/* <Box
+        backgroundColor="gray"
+        // borderStyle="single"
+        // borderColor={borderColor}
+        flexDirection="column"
+      >
+        {menuTitle && (
+          <>
+            <Text color={borderColor} bold>
+              {menuTitle}
+            </Text>
+            <Text> </Text>
+          </>
+        )}
+        {children}
+      </Box> */}
     </Box>
+    // </Box>
   );
-}; 
+};

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import SelectInput from "ink-select-input";
 import type { MenuOption, PageMetadata } from "../types.js";
-import { ProgressBar } from "../ui/ProgressBar.js";
 
 interface MainMenuScreenProps {
   onSelect: (action: string) => void;
@@ -11,12 +10,10 @@ export const mainMenuMetadata: PageMetadata = {
   title: "MCP Package Manager - Main Menu",
   menuTitle: "Main Menu",
   menuWidth: 80,
-  borderColor: "cyan"
+  borderColor: "cyan",
 };
 
-export const MainMenuScreen: React.FC<MainMenuScreenProps> = ({
-  onSelect,
-}) => {
+export const MainMenuScreen: React.FC<MainMenuScreenProps> = ({ onSelect }) => {
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     setProgress(48);
@@ -83,11 +80,7 @@ export const MainMenuScreen: React.FC<MainMenuScreenProps> = ({
 
   return (
     <>
-    <SelectInput
-      items={items}
-      onSelect={(item) => onSelect(item.value)}
-    />
-    <ProgressBar current={progress} total={100} />
+      <SelectInput items={items} onSelect={(item) => onSelect(item.value)} />
     </>
   );
-}; 
+};
