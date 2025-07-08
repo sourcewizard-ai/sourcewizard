@@ -1,64 +1,40 @@
 {
-  "name": "mcp-package-manager",
+  "name": "repowizard",
   "version": "1.0.0",
-  "description": "MCP server and CLI tool for intelligent package and code snippet management",
+  "description": "MCP Package Manager with AI-powered guidance",
   "main": "dist/index.js",
-  "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/mcp-server/index.ts",
-    "cli": "tsx src/cli/index.ts",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "lint": "eslint src/**/*.ts",
-    "start:server": "node dist/mcp-server/index.js",
-    "start:cli": "node dist/cli/index.js"
-  },
-  "bin": {
-    "mcp-pkg": "./dist/cli/index.js"
+    "start": "node dist/index.js",
+    "dev": "tsx src/cli/demo.ts",
+    "dos-ui": "tsx src/cli/dos-ui.ts",
+    "ink-ui": "tsx src/cli/ink-demo.ts",
+    "ink-ui-simple": "tsx src/cli/ink-demo-simple.ts"
   },
   "keywords": [
     "mcp",
     "package-manager",
+    "ai",
     "cli",
-    "typescript",
-    "ai"
+    "terminal-ui"
   ],
-  "author": "Your Name",
+  "author": "",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.4.0",
-    "axios": "^1.6.0",
-    "boxen": "^7.1.1",
-    "chalk": "^5.3.0",
-    "commander": "^11.1.0",
+    "react": "^17.0.2",
+    "ink": "^3.2.0",
+    "ink-gradient": "^2.0.0",
+    "ink-big-text": "^1.2.0",
+    "ink-spinner": "^4.0.3",
+    "chalk": "^4.1.2",
+    "boxen": "^5.1.2",
     "figlet": "^1.7.0",
-    "fs-extra": "^11.1.1",
-    "glob": "^10.3.10",
-    "gradient-string": "^2.0.2",
-    "inquirer": "^9.2.12",
-    "ora": "^7.0.1",
-    "semver": "^7.5.4",
-    "terminal-kit": "^3.0.1",
-    "yaml": "^2.3.4"
+    "gradient-string": "^2.0.2"
   },
   "devDependencies": {
-    "@types/figlet": "^1.5.8",
-    "@types/fs-extra": "^11.0.4",
-    "@types/gradient-string": "^1.1.6",
-    "@types/inquirer": "^9.0.7",
-    "@types/jest": "^29.5.8",
-    "@types/node": "^20.9.0",
-    "@types/semver": "^7.5.6",
-    "@typescript-eslint/eslint-plugin": "^6.12.0",
-    "@typescript-eslint/parser": "^6.12.0",
-    "eslint": "^8.54.0",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.1.1",
-    "tsx": "^4.6.0",
-    "typescript": "^5.3.2"
-  },
-  "workspaces": [
-    "packages/*"
-  ]
+    "@types/react": "^17.0.50",
+    "@types/figlet": "^1.5.6",
+    "typescript": "^5.0.0",
+    "tsx": "^4.0.0"
+  }
 }

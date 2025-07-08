@@ -1,0 +1,177 @@
+{
+  "package:lodash": {
+    "type": "package",
+    "data": {
+      "name": "lodash",
+      "version": "4.17.21",
+      "description": "A modern JavaScript utility library delivering modularity, performance & extras.",
+      "keywords": [
+        "utility",
+        "functional",
+        "performance"
+      ],
+      "repository": "https://github.com/lodash/lodash",
+      "homepage": "https://lodash.com/",
+      "author": "John-David Dalton",
+      "license": "MIT",
+      "category": "utility",
+      "popularity": 98,
+      "lastUpdated": "2021-02-20T00:00:00.000Z",
+      "size": "4.4 MB"
+    },
+    "metadata": {
+      "addedDate": "2025-07-07T20:19:41.345Z",
+      "accessCount": 3,
+      "tags": [
+        "utility",
+        "functional",
+        "performance"
+      ],
+      "verified": true,
+      "source": "registry",
+      "lastAccessed": "2025-07-07T23:00:46.076Z"
+    }
+  },
+  "package:express": {
+    "type": "package",
+    "data": {
+      "name": "express",
+      "version": "4.18.2",
+      "description": "Fast, unopinionated, minimalist web framework for node.",
+      "keywords": [
+        "framework",
+        "web",
+        "http",
+        "server"
+      ],
+      "repository": "https://github.com/expressjs/express",
+      "homepage": "https://expressjs.com/",
+      "author": "TJ Holowaychuk",
+      "license": "MIT",
+      "category": "framework",
+      "popularity": 95,
+      "lastUpdated": "2023-10-10T00:00:00.000Z",
+      "size": "2.2 MB"
+    },
+    "metadata": {
+      "addedDate": "2025-07-07T20:19:41.346Z",
+      "accessCount": 3,
+      "tags": [
+        "framework",
+        "web",
+        "http",
+        "server"
+      ],
+      "verified": true,
+      "source": "registry",
+      "lastAccessed": "2025-07-07T23:00:46.076Z"
+    }
+  },
+  "package:axios": {
+    "type": "package",
+    "data": {
+      "name": "axios",
+      "version": "1.6.0",
+      "description": "Promise based HTTP client for the browser and node.js",
+      "keywords": [
+        "http",
+        "request",
+        "ajax",
+        "promise"
+      ],
+      "repository": "https://github.com/axios/axios",
+      "homepage": "https://axios-http.com/",
+      "author": "Matt Zabriskie",
+      "license": "MIT",
+      "category": "library",
+      "popularity": 92,
+      "lastUpdated": "2023-10-21T00:00:00.000Z",
+      "size": "1.8 MB"
+    },
+    "metadata": {
+      "addedDate": "2025-07-07T20:19:41.346Z",
+      "accessCount": 3,
+      "tags": [
+        "http",
+        "request",
+        "ajax",
+        "promise"
+      ],
+      "verified": true,
+      "source": "registry",
+      "lastAccessed": "2025-07-07T23:00:46.076Z"
+    }
+  },
+  "snippet:debounce-function": {
+    "type": "snippet",
+    "data": {
+      "id": "debounce-function",
+      "name": "Debounce Function",
+      "description": "A utility function to debounce function calls",
+      "code": "function debounce<T extends (...args: any[]) => any>(\n  func: T,\n  wait: number,\n  immediate = false\n): (...args: Parameters<T>) => void {\n  let timeout: NodeJS.Timeout | null = null;\n  \n  return function executedFunction(...args: Parameters<T>) {\n    const later = () => {\n      timeout = null;\n      if (!immediate) func(...args);\n    };\n    \n    const callNow = immediate && !timeout;\n    \n    if (timeout) clearTimeout(timeout);\n    timeout = setTimeout(later, wait);\n    \n    if (callNow) func(...args);\n  };\n}",
+      "language": "typescript",
+      "keywords": [
+        "utility",
+        "debounce",
+        "performance",
+        "async"
+      ],
+      "category": "function",
+      "author": "System",
+      "framework": "vanilla",
+      "dependencies": [],
+      "usageExample": "const debouncedSave = debounce(saveData, 300);\ndebouncedSave(data);",
+      "installInstructions": "Copy the function and import it into your project"
+    },
+    "metadata": {
+      "addedDate": "2025-07-07T20:19:41.349Z",
+      "accessCount": 3,
+      "tags": [
+        "utility",
+        "debounce",
+        "performance",
+        "async"
+      ],
+      "verified": true,
+      "source": "registry",
+      "lastAccessed": "2025-07-07T23:00:46.076Z"
+    }
+  },
+  "snippet:react-custom-hook": {
+    "type": "snippet",
+    "data": {
+      "id": "react-custom-hook",
+      "name": "useLocalStorage Hook",
+      "description": "React hook for localStorage with TypeScript support",
+      "code": "import { useState, useEffect } from 'react';\n\nexport function useLocalStorage<T>(\n  key: string,\n  initialValue: T\n): [T, (value: T | ((val: T) => T)) => void] {\n  const [storedValue, setStoredValue] = useState<T>(() => {\n    if (typeof window === 'undefined') {\n      return initialValue;\n    }\n    try {\n      const item = window.localStorage.getItem(key);\n      return item ? JSON.parse(item) : initialValue;\n    } catch (error) {\n      console.error('Error reading localStorage key \"' + key + '\":', error);\n      return initialValue;\n    }\n  });\n\n  const setValue = (value: T | ((val: T) => T)) => {\n    try {\n      const valueToStore = value instanceof Function ? value(storedValue) : value;\n      setStoredValue(valueToStore);\n      if (typeof window !== 'undefined') {\n        window.localStorage.setItem(key, JSON.stringify(valueToStore));\n      }\n    } catch (error) {\n      console.error('Error setting localStorage key \"' + key + '\":', error);\n    }\n  };\n\n  return [storedValue, setValue];\n}",
+      "language": "typescript",
+      "keywords": [
+        "react",
+        "hook",
+        "localstorage",
+        "state"
+      ],
+      "category": "hook",
+      "author": "System",
+      "framework": "react",
+      "dependencies": [
+        "react"
+      ],
+      "usageExample": "const [name, setName] = useLocalStorage('username', '');",
+      "installInstructions": "Copy the hook and ensure React is installed"
+    },
+    "metadata": {
+      "addedDate": "2025-07-07T20:19:41.349Z",
+      "accessCount": 3,
+      "tags": [
+        "react",
+        "hook",
+        "localstorage",
+        "state"
+      ],
+      "verified": true,
+      "source": "registry",
+      "lastAccessed": "2025-07-07T23:00:46.076Z"
+    }
+  }
+}
