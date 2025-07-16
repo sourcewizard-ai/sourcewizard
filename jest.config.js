@@ -1,25 +1,30 @@
 export default {
-  preset: 'ts-jest/presets/default-esm',
-  testEnvironment: 'node',
-  roots: ['<rootDir>/src', '<rootDir>/tests'],
-  testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
+  preset: "ts-jest/presets/default-esm",
+  testEnvironment: "node",
+  roots: ["<rootDir>/src", "<rootDir>/tests"],
+  testMatch: ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
+  extensionsToTreatAsEsm: [".ts"],
   transform: {
-    '^.+\\.ts$': ['ts-jest', {
-      useESM: true,
-      tsconfig: {
-        module: 'ESNext'
-      }
-    }]
+    "^.+\\.ts$": [
+      "ts-jest",
+      {
+        useESM: true,
+        tsconfig: {
+          module: "ESNext",
+          verbatimModuleSyntax: false,
+        },
+      },
+    ],
   },
-  moduleNameMapping: {
-    '^(\\.{1,2}/.*)\\.js$': '$1'
+  moduleNameMapper: {
+    "^(\\.{1,2}/.*)\\.js$": "$1",
   },
   collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/**/*.d.ts',
-    '!src/**/*.test.ts',
-    '!src/**/*.spec.ts'
+    "src/**/*.ts",
+    "!src/**/*.d.ts",
+    "!src/**/*.test.ts",
+    "!src/**/*.spec.ts",
   ],
-  coverageDirectory: 'coverage',
-  coverageReporters: ['text', 'lcov', 'html']
+  coverageDirectory: "coverage",
+  coverageReporters: ["text", "lcov", "html"],
 };

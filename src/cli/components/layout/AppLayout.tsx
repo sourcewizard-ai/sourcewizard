@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
+import figlet from "figlet";
 
 interface AppLayoutProps {
   title: string;
@@ -36,35 +37,35 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       flexDirection="column"
       height="100%"
       width="100%"
-      justifyContent="center"
-      alignItems="center"
+      //   justifyContent="center"
+      //   alignItems="center"
       backgroundColor="linear-gradient"
     >
-      {/* Menu Box Container */}
-      <Box>
-        <Box backgroundColor="#000" paddingRight={1} paddingBottom={1}>
-          <Box flexDirection="column" backgroundColor="#C0C7C8" padding={2}>
+      <Box position="absolute" flexDirection="column">
+        <Text color="white" bold backgroundColor="#0001F2">
+          {" "}
+        </Text>
+        <Text color="white" italic bold backgroundColor="#0001F2">
+          &nbsp;SourceWizard&nbsp;
+        </Text>
+      </Box>
+      <Box
+        width="100%"
+        height="100%"
+        justifyContent="center"
+        alignItems="center"
+      >
+        <Box
+          backgroundColor="#000"
+          paddingRight={1}
+          paddingBottom={1}
+          width="55%"
+        >
+          <Box backgroundColor="#C0C7C8" marginLeft={-1} width="100%">
             {children}
           </Box>
         </Box>
       </Box>
-      {/* <Box
-        backgroundColor="gray"
-        // borderStyle="single"
-        // borderColor={borderColor}
-        flexDirection="column"
-      >
-        {menuTitle && (
-          <>
-            <Text color={borderColor} bold>
-              {menuTitle}
-            </Text>
-            <Text> </Text>
-          </>
-        )}
-        {children}
-      </Box> */}
     </Box>
-    // </Box>
   );
 };

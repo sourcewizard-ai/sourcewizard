@@ -25,8 +25,8 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
 
   const filled_pct = Math.floor((current / total) * 100);
   // const empty_pct = 100 - filled_pct;
-  const textColor = filled_pct >= 50 ? "white" : "#00007C";
-  const bgTextColor = filled_pct < 50 ? "white" : "#00007C";
+  const textColor = filled_pct >= 50 ? "#ffffff" : "#00007C";
+  const bgTextColor = filled_pct < 50 ? "#ffffff" : "#00007C";
 
   return (
     <Box
@@ -38,7 +38,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       <Box flexDirection="row" width="100%" backgroundColor="cyan">
         <Box
           position="absolute"
-          backgroundColor="white"
+          backgroundColor="#ffffff"
           overflow="hidden"
           width="100%"
           alignItems="center"

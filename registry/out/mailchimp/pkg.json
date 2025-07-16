@@ -1,0 +1,18 @@
+{
+    "name": "mailchimp",
+    "description": "Mailchimp is a marketing automation platform.",
+    "language": "typescript",
+    "env": [
+        "MAILCHIMP_API_KEY",
+        "MAILCHIMP_SERVER_PREFIX",
+        "MAILCHIMP_LIST_ID"
+    ],
+    "packages": [
+        "@mailchimp/mailchimp_marketing"
+    ],
+    "tags": [
+        "marketing",
+        "email",
+        "automation"
+    ]
+}
