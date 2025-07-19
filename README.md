@@ -1,4 +1,4 @@
-# MCP Package Manager
+# SourceWizard
 
 A terminal-based package manager with AI-powered guidance, featuring two different UI implementations.
 

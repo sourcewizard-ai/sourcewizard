@@ -1,9 +1,12 @@
 {
-  "name": "repowizard",
+  "name": "sourcewizard",
   "version": "1.0.0",
-  "description": "MCP Package Manager with AI-powered guidance",
+  "description": "SourceWizard - Intelligent package and code snippet management with AI-powered guidance",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "sourcewizard": "dist/src/cli/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
@@ -14,24 +17,32 @@
     "test:coverage": "jest --coverage"
   },
   "keywords": [
-    "mcp",
+    "sourcewizard",
     "package-manager",
     "ai",
     "cli",
-    "terminal-ui"
+    "terminal-ui",
+    "code-snippets",
+    "developer-tools"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@ai-sdk/anthropic": "^1.2.12",
     "@inkjs/ui": "^2.0.0",
+    "@supabase/supabase-js": "^2.52.0",
     "@typeconf/sdk": "^0.3.2",
     "@types/commander": "^2.12.0",
+    "@types/glob": "^8.1.0",
     "@types/ora": "^3.1.0",
+    "ai": "^4.3.19",
     "boxen": "^5.1.2",
     "chalk": "^4.1.2",
     "commander": "^14.0.0",
+    "dotenv": "^17.2.0",
     "figlet": "^1.7.0",
     "fullscreen-ink": "^0.0.2",
+    "glob": "^11.0.3",
     "gradient-string": "^2.0.2",
     "ink": "^6.0.1",
     "ink-big-text": "^1.2.0",
@@ -42,9 +53,11 @@
     "ink-text-input": "^6.0.0",
     "ora": "^8.2.0",
     "react": "^19.1.0",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/dotenv": "^6.1.1",
     "@types/figlet": "^1.5.6",
     "@types/ink-big-text": "^1.2.4",
     "@types/ink-gradient": "^2.0.4",

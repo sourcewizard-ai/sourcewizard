@@ -1,0 +1,20 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+## Project rules
+
+This is a Next.js project, deployed to Vercel. It uses Typescript, Tailwind.
+Supabase schema is located at supabase/schemas directory. This is a declarative schema, so to update it you don't need migrations, just edit the schema.
+Supabase project is sfcheddgbldthfcxoaqn (typeconf).
+When you've asked to create a new feature you must put the
+design decisions in architecture directory.
+Before implementation scan the project - find things that you can reuse, understand the component and service structure.
+Separate frontend and backend properly - create or use APIs when necessary.
+Separate state update on frontend from mutations on backend.
+You must make concise changes and avoid updating unrelated files or implementing unrelated features if user didn't ask that explicitly.
+Do NOT run or kill the development server with npm run dev, assume it's already running.
+Use npx tsc --noEmit for project wide type checking.
+
+You must always confirm that you're following rules by printing mode:typeconf at the start and at the end of your reply.

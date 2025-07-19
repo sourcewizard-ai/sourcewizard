@@ -12,7 +12,7 @@ npm run cli wizard
 or
 
 ```bash
-mcp-pkg wizard
+sourcewizard wizard
 ```
 
 ## 🖼️ Visual Experience
@@ -186,19 +186,19 @@ When you select "B" to install a package:
 ### Quick Installation with Wizard
 ```bash
 # Install a specific package with DOS wizard
-mcp-pkg install express --wizard
+sourcewizard install express --wizard
 
 # Install with version and wizard
-mcp-pkg install react --version 18.2.0 --wizard
+sourcewizard install react --version 18.2.0 --wizard
 
 # Install as dev dependency with wizard
-mcp-pkg install typescript --dev --wizard
+sourcewizard install typescript --dev --wizard
 ```
 
 ### Interactive Mode with Wizard Access
 ```bash
 # Start interactive mode
-mcp-pkg interactive
+sourcewizard interactive
 
 # Then select "🎮 DOS Wizard Mode" from the menu
 ```
@@ -206,7 +206,7 @@ mcp-pkg interactive
 ### Full Wizard Experience
 ```bash
 # Complete DOS setup wizard experience
-mcp-pkg wizard
+sourcewizard wizard
 
 # This includes:
 # 1. Welcome screen with ASCII art
@@ -254,7 +254,7 @@ Retro-style progress bars with:
 
 Try these features in order:
 
-1. **Welcome Screen**: `mcp-pkg wizard`
+1. **Welcome Screen**: `sourcewizard wizard`
    - [ ] See ASCII art title with gradient
    - [ ] Blue-to-black gradient background
    - [ ] Classic welcome message
