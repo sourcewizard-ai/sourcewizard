@@ -27,6 +27,8 @@ export class MCPPackageCLI {
       .description("Login to your account")
       .option("-e, --email <email>", "Email address")
       .option("-p, --password <password>", "Password")
+      .option("--cli", "Use CLI-based login instead of web browser")
+      .option("--url <url>", "Custom login page URL")
       .action(async (options) => {
         await this.handleLogin(options);
       });
@@ -79,6 +81,48 @@ export class MCPPackageCLI {
   }
 
   private async handleLogin(options: {
+    email?: string;
+    password?: string;
+    cli?: boolean;
+    url?: string;
+  }): Promise<void> {
+    try {
+      // Check if user wants CLI-only login or if email/password provided
+      if (options.cli || options.email || options.password) {
+        console.log(chalk.blue("📝 Using CLI-based authentication..."));
+        await this.handleCliLogin(options);
+        return;
+      }
+
+      // Use web-based authentication by default
+      console.log(chalk.blue("🚀 Starting web-based authentication..."));
+      const result = await cliAuth.loginWithBrowser({
+        loginPageUrl: options.url,
+      });
+
+      if (result.isAuthenticated) {
+        console.log(chalk.green("✓ Successfully logged in!"));
+        console.log(chalk.gray(`Welcome back, ${result.user?.email}`));
+      } else {
+        console.log(
+          chalk.yellow(
+            "Login successful, but please check your email to confirm your account."
+          )
+        );
+      }
+    } catch (error) {
+      console.error(
+        chalk.red("Web login failed:"),
+        error instanceof Error ? error.message : String(error)
+      );
+
+      // Fallback to CLI-based login
+      console.log(chalk.yellow("\n⚠️  Falling back to CLI login..."));
+      await this.handleCliLogin(options);
+    }
+  }
+
+  private async handleCliLogin(options: {
     email?: string;
     password?: string;
   }): Promise<void> {

@@ -1,5 +1,7 @@
 import { auth, SupabaseAuth } from "./supabase-client.js";
 import { tokenStorage, StoredTokens } from "./token-storage.js";
+import { WebAuthServer } from "./web-auth-server.js";
+import open from "open";
 
 export interface LoginOptions {
   email: string;
@@ -12,6 +14,10 @@ export interface AuthStatus {
     id: string;
     email: string;
   };
+}
+
+export interface WebAuthOptions {
+  loginPageUrl?: string;
 }
 
 export class CLIAuth {
@@ -38,7 +44,74 @@ export class CLIAuth {
   }
 
   /**
-   * Login with email and password
+   * Login using web-based authentication
+   */
+  async loginWithBrowser(options: WebAuthOptions = {}): Promise<AuthStatus> {
+    // Create a new server instance for this login
+    const webAuthServer = new WebAuthServer();
+
+    try {
+      console.log("🌐 Starting authentication server...");
+
+      // Start the web auth server on a random port
+      const port = await webAuthServer.start();
+      const callbackUrl = webAuthServer.getCallbackUrl();
+
+      if (!callbackUrl) {
+        throw new Error("Failed to get callback URL");
+      }
+
+      console.log(`🔗 Authentication server running on port ${port}`);
+      console.log(`📡 Callback endpoint: ${callbackUrl}`);
+
+      // Construct login page URL with callback parameter
+      const loginPageUrl =
+        options.loginPageUrl ||
+        `http://localhost:3000/cli-login?redirect_to=${encodeURIComponent(
+          callbackUrl
+        )}`;
+
+      console.log("🌐 Opening browser for authentication...");
+      await open(loginPageUrl);
+      console.log(`🔗 Login page opened: ${loginPageUrl}`);
+      console.log("⏳ Waiting for authentication callback...");
+
+      // Wait for authentication
+      console.log("🔄 Calling waitForAuth...");
+      const tokens = await webAuthServer.waitForAuth();
+      console.log("✅ Authentication completed, received tokens");
+
+      // Stop the server
+      console.log("🛑 Stopping authentication server...");
+      await webAuthServer.stop();
+      console.log("🔒 Server stopped successfully");
+
+      return {
+        isAuthenticated: true,
+        user: tokens.user,
+      };
+    } catch (error) {
+      console.error("❌ Error in loginWithBrowser:", error);
+
+      // Make sure to stop the server on error
+      try {
+        console.log("🛑 Attempting to stop server due to error...");
+        await webAuthServer.stop();
+        console.log("🔒 Server stopped after error");
+      } catch (stopError) {
+        console.error("❌ Error stopping server:", stopError);
+      }
+
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Web authentication failed with unknown error"
+      );
+    }
+  }
+
+  /**
+   * Login with email and password (legacy method)
    */
   async login(options: LoginOptions): Promise<AuthStatus> {
     try {
