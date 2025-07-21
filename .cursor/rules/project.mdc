@@ -1,8 +1,9 @@
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: true
 ---
+
 ## Project rules
 
 This is a Next.js project, deployed to Vercel. It uses Typescript, Tailwind.
@@ -16,5 +17,7 @@ Separate state update on frontend from mutations on backend.
 You must make concise changes and avoid updating unrelated files or implementing unrelated features if user didn't ask that explicitly.
 Do NOT run or kill the development server with npm run dev, assume it's already running.
 Use npx tsc --noEmit for project wide type checking.
+Don't add console.log inside CLI facing library files, unless you need this for temporary debugging.
+Don't write a long summary of completed task at then end, just mention that task complete.
 
 You must always confirm that you're following rules by printing mode:typeconf at the start and at the end of your reply.

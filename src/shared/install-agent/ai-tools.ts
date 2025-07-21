@@ -1,7 +1,9 @@
 import { promises as fs } from "fs";
-import path from "path";
+import * as path from "path";
 import { tool } from "ai";
 import z from "zod";
+import { getBulkTargetData } from "./repository-detector";
+import { TargetInfo } from "../types";
 
 /**
  * Create a read_file tool for AI agents
@@ -243,11 +245,93 @@ export function createDeleteFileTool(cwd: string) {
 }
 
 /**
+ * Create a getBulkTargetData tool for AI agents
+ * @param cwd Current working directory for relative path resolution
+ * @param repositoryTargets Available targets in the repository
+ */
+export function createGetBulkTargetDataTool(
+  cwd: string,
+  repositoryTargets: Record<string, TargetInfo>
+) {
+  return tool({
+    description:
+      "Get bulk target data including dependencies and environment variables for specified targets",
+    parameters: z.object({
+      targetNames: z
+        .array(z.string())
+        .describe(
+          "List of target names to analyze (available targets: " +
+            Object.keys(repositoryTargets).join(", ") +
+            ")"
+        ),
+      repoPath: z
+        .string()
+        .optional()
+        .describe("Repository path (defaults to current working directory)"),
+    }),
+    execute: async ({ targetNames, repoPath }) => {
+      try {
+        const resolvedRepoPath = repoPath ? path.resolve(cwd, repoPath) : cwd;
+
+        // Filter repository targets by requested names
+        const requestedTargets: Record<string, TargetInfo> = {};
+        const availableTargetNames = Object.keys(repositoryTargets);
+        const invalidTargets: string[] = [];
+
+        for (const targetName of targetNames) {
+          if (repositoryTargets[targetName]) {
+            requestedTargets[targetName] = repositoryTargets[targetName];
+          } else {
+            invalidTargets.push(targetName);
+          }
+        }
+
+        if (invalidTargets.length > 0) {
+          return {
+            success: false,
+            error: `Invalid target names: ${invalidTargets.join(
+              ", "
+            )}. Available targets: ${availableTargetNames.join(", ")}`,
+          };
+        }
+
+        if (Object.keys(requestedTargets).length === 0) {
+          return {
+            success: false,
+            error: "No valid targets specified",
+          };
+        }
+
+        const result = await getBulkTargetData(
+          requestedTargets,
+          resolvedRepoPath
+        );
+        return {
+          success: true,
+          data: result,
+          requestedTargets: Object.keys(requestedTargets),
+          availableTargets: availableTargetNames,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  });
+}
+
+/**
  * Create a complete set of file operation tools for AI agents
  * @param cwd Current working directory for relative path resolution
+ * @param repositoryTargets Optional repository targets for the getBulkTargetData tool
  */
-export function createFileOperationTools(cwd: string) {
-  return {
+export function createFileOperationTools(
+  cwd: string,
+  repositoryTargets?: Record<string, TargetInfo>
+) {
+  const tools: any = {
     read_file: createReadFileTool(cwd),
     write_file: createWriteFileTool(cwd),
     create_file: createCreateFileTool(cwd),
@@ -255,4 +339,14 @@ export function createFileOperationTools(cwd: string) {
     append_to_file: createAppendToFileTool(cwd),
     delete_file: createDeleteFileTool(cwd),
   };
+
+  // Only add getBulkTargetData tool if repository targets are provided
+  if (repositoryTargets) {
+    tools.get_bulk_target_data = createGetBulkTargetDataTool(
+      cwd,
+      repositoryTargets
+    );
+  }
+
+  return tools;
 }

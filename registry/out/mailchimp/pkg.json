@@ -1,18 +1,21 @@
 {
     "name": "mailchimp",
-    "description": "Mailchimp is a marketing automation platform.",
+    "description": "Mailchimp integration",
     "language": "typescript",
     "env": [
         "MAILCHIMP_API_KEY",
-        "MAILCHIMP_SERVER_PREFIX",
         "MAILCHIMP_LIST_ID"
     ],
     "packages": [
         "@mailchimp/mailchimp_marketing"
     ],
     "tags": [
-        "marketing",
-        "email",
-        "automation"
-    ]
+        "email"
+    ],
+    "relevant_files_pattern": [
+        "**/middleware.ts",
+        "**/app/layout.tsx",
+        ".env.local"
+    ],
+    "setup_prompt": "# Add Mailchimp to Next.js project\n\n**Purpose:** Enforce only the **current** and **correct** instructions for integrating Mailchimp into a Next.js (App Router) application.\n**Scope:** All AI-generated advice or code related to Mailchimp must follow these guardrails.\n\n1. Install the package\n\nUse the npm/yarn/pnpm/bun package manager to install the @mailchimp/mailchimp_marketing package.\n\n2. Set env\n\nAdd three env params to .env or .env.local:\n\n```\nMAILCHIMP_API_KEY\nMAILCHIMP_LIST_ID\nMAILCHIMP_SERVER\n```\n\n3. Create a client helper\n\nCreate a helper under the repository library directory:\n\n```typescript\n// mailchimp.ts\nimport mailchimp from \"@mailchimp/mailchimp_marketing\";\n\nasync function addListMember(email: string, tags: string[]) {\n  if (!process.env.MAILCHIMP_LIST_ID) {\n    throw new Error(\"MAILCHIMP_LIST_ID is not set\");\n  }\n  if (!process.env.MAILCHIMP_API_KEY) {\n    throw new Error(\"MAILCHIMP_API_KEY is not set\");\n  }\n  if (!process.env.MAILCHIMP_SERVER) {\n    throw new Error(\"MAILCHIMP_SERVER is not set\");\n  }\n  mailchimp.setConfig({\n    apiKey: process.env.MAILCHIMP_API_KEY,\n    server: process.env.MAILCHIMP_SERVER,\n  });\n\n  try {\n    await mailchimp.lists.addListMember(process.env.MAILCHIMP_LIST_ID, {\n      email_address: email,\n      status: \"subscribed\",\n      tags: tags,\n    });\n    return;\n  } catch (error) {\n    const err: any = error;\n    if (\n      \"response\" in err &&\n      \"body\" in err.response &&\n      \"title\" in err.response.body &&\n      err.response.body.title === \"Member Exists\"\n    ) {\n      return;\n    }\n    throw error;\n  }\n}\n```\n\nDon't create any other files and documentation.\n"
 }

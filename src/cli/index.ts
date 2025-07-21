@@ -2,13 +2,19 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import { cliAuth } from "../shared/cli-auth.js";
+import { CLIAuth } from "../shared/cli-web-auth/index.js";
+import { renderInstall } from "./install.jsx";
+import { supabase } from "../shared/supabase-client.js";
+import { install, search } from "./agent.js";
+import { detectRepo } from "../shared/install-agent/repository-detector.js";
 
 export class MCPPackageCLI {
   private program: Command;
+  private cliAuth: CLIAuth;
 
   constructor() {
     // Load configuration from environment variables
+    this.cliAuth = new CLIAuth(supabase.auth, "sourcewizard");
     this.program = new Command();
     this.setupCommands();
   }
@@ -24,22 +30,10 @@ export class MCPPackageCLI {
     // Authentication commands
     this.program
       .command("login")
-      .description("Login to your account")
-      .option("-e, --email <email>", "Email address")
-      .option("-p, --password <password>", "Password")
-      .option("--cli", "Use CLI-based login instead of web browser")
+      .description("Login to your account using web browser")
       .option("--url <url>", "Custom login page URL")
       .action(async (options) => {
         await this.handleLogin(options);
-      });
-
-    this.program
-      .command("signup")
-      .description("Create a new account")
-      .option("-e, --email <email>", "Email address")
-      .option("-p, --password <password>", "Password")
-      .action(async (options) => {
-        await this.handleSignup(options);
       });
 
     this.program
@@ -62,6 +56,7 @@ export class MCPPackageCLI {
       .alias("s")
       .description("Search for packages and code snippets")
       .argument("<query>", "Search query")
+      .argument("[path]", "Path to the repository")
       .option("-l, --language <language>", "Filter by language (for snippets)")
       .option("-n, --limit <number>", "Number of results to show", "10")
       .option(
@@ -69,7 +64,19 @@ export class MCPPackageCLI {
         "Sort by (relevance|popularity|date|name)",
         "relevance"
       )
-      .action(async (query, options) => {});
+      .action(async (query, path, options) => {
+        search(query, path || process.cwd());
+      });
+
+    this.program
+      .command("repo")
+      .description("Analyze a repository")
+      .argument("[path]", "Path to the repository")
+      .action(async (path: string | undefined, options: any) => {
+        //renderInstall(name);
+        const repo = await detectRepo(path || process.cwd());
+        console.log(JSON.stringify(repo, null, 2));
+      });
 
     // Install command
     this.program
@@ -77,96 +84,17 @@ export class MCPPackageCLI {
       .alias("i")
       .description("Install a package or code snippet with AI guidance")
       .argument("[name]", "Package or snippet name to install")
-      .action(async (name: string | undefined, options: any) => {});
+      .action(async (name: string | undefined, options: any) => {
+        renderInstall(name);
+        // install(name, process.cwd());
+      });
   }
 
-  private async handleLogin(options: {
-    email?: string;
-    password?: string;
-    cli?: boolean;
-    url?: string;
-  }): Promise<void> {
+  private async handleLogin(options: { url?: string }): Promise<void> {
     try {
-      // Check if user wants CLI-only login or if email/password provided
-      if (options.cli || options.email || options.password) {
-        console.log(chalk.blue("📝 Using CLI-based authentication..."));
-        await this.handleCliLogin(options);
-        return;
-      }
-
-      // Use web-based authentication by default
-      console.log(chalk.blue("🚀 Starting web-based authentication..."));
-      const result = await cliAuth.loginWithBrowser({
+      const result = await this.cliAuth.login({
         loginPageUrl: options.url,
       });
-
-      if (result.isAuthenticated) {
-        console.log(chalk.green("✓ Successfully logged in!"));
-        console.log(chalk.gray(`Welcome back, ${result.user?.email}`));
-      } else {
-        console.log(
-          chalk.yellow(
-            "Login successful, but please check your email to confirm your account."
-          )
-        );
-      }
-    } catch (error) {
-      console.error(
-        chalk.red("Web login failed:"),
-        error instanceof Error ? error.message : String(error)
-      );
-
-      // Fallback to CLI-based login
-      console.log(chalk.yellow("\n⚠️  Falling back to CLI login..."));
-      await this.handleCliLogin(options);
-    }
-  }
-
-  private async handleCliLogin(options: {
-    email?: string;
-    password?: string;
-  }): Promise<void> {
-    try {
-      let { email, password } = options;
-
-      // If email or password not provided as options, prompt for them
-      if (!email) {
-        const readline = await import("readline");
-        const rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-        });
-
-        email = await new Promise<string>((resolve) => {
-          rl.question("Email: ", (answer) => {
-            rl.close();
-            resolve(answer);
-          });
-        });
-      }
-
-      if (!password) {
-        const readline = await import("readline");
-        const rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-        });
-
-        password = await new Promise<string>((resolve) => {
-          rl.question("Password: ", (answer) => {
-            rl.close();
-            resolve(answer);
-          });
-        });
-      }
-
-      if (!email || !password) {
-        console.error(chalk.red("Email and password are required"));
-        process.exit(1);
-      }
-
-      console.log(chalk.blue("Logging in..."));
-      const result = await cliAuth.login({ email, password });
 
       if (result.isAuthenticated) {
         console.log(chalk.green("✓ Successfully logged in!"));
@@ -187,71 +115,9 @@ export class MCPPackageCLI {
     }
   }
 
-  private async handleSignup(options: {
-    email?: string;
-    password?: string;
-  }): Promise<void> {
-    try {
-      let { email, password } = options;
-
-      // If email or password not provided as options, prompt for them
-      if (!email) {
-        const readline = await import("readline");
-        const rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-        });
-
-        email = await new Promise<string>((resolve) => {
-          rl.question("Email: ", (answer) => {
-            rl.close();
-            resolve(answer);
-          });
-        });
-      }
-
-      if (!password) {
-        const readline = await import("readline");
-        const rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-        });
-
-        password = await new Promise<string>((resolve) => {
-          rl.question("Password: ", (answer) => {
-            rl.close();
-            resolve(answer);
-          });
-        });
-      }
-
-      if (!email || !password) {
-        console.error(chalk.red("Email and password are required"));
-        process.exit(1);
-      }
-
-      console.log(chalk.blue("Creating account..."));
-      const result = await cliAuth.signup({ email, password });
-
-      console.log(chalk.green("✓ Account created successfully!"));
-      console.log(
-        chalk.yellow(
-          "Please check your email to confirm your account before logging in."
-        )
-      );
-    } catch (error) {
-      console.error(
-        chalk.red("Signup failed:"),
-        error instanceof Error ? error.message : String(error)
-      );
-      process.exit(1);
-    }
-  }
-
   private async handleLogout(): Promise<void> {
     try {
-      console.log(chalk.blue("Logging out..."));
-      await cliAuth.logout();
+      await this.cliAuth.logout();
       console.log(chalk.green("✓ Successfully logged out!"));
     } catch (error) {
       console.error(
@@ -264,7 +130,7 @@ export class MCPPackageCLI {
 
   private async handleWhoami(): Promise<void> {
     try {
-      const status = await cliAuth.getStatus();
+      const status = await this.cliAuth.getStatus();
 
       if (status.isAuthenticated && status.user) {
         console.log(chalk.green("✓ You are logged in"));
@@ -286,7 +152,7 @@ export class MCPPackageCLI {
   async run(): Promise<void> {
     try {
       // Initialize authentication on startup
-      await cliAuth.initialize();
+      await this.cliAuth.initialize();
 
       await this.program.parseAsync(process.argv);
     } catch (error) {

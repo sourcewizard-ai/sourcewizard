@@ -1,11 +1,11 @@
-# SourceWizard CLI - Callback-Based Authentication
+# SourceWizard CLI - Web-Based Authentication
 
 ## Quick Start
 
-### Callback-Based Authentication (Recommended)
+### Web-Based Authentication
 
 ```bash
-# Default callback-based authentication
+# Default web-based authentication
 sourcewizard login
 
 # Use custom login page URL
@@ -21,26 +21,35 @@ This will:
 5. ✅ Automatically save your session
 6. 🔒 Securely close the server
 
-### CLI-Based Login (Alternative)
-
-```bash
-# Force CLI-based authentication
-sourcewizard login --cli
-
-# Or provide credentials directly
-sourcewizard login -e your@email.com -p yourpassword
-```
-
 ## Authentication Flow
 
-### Callback Authentication Experience
+### Web Authentication Experience
 
 1. **Command**: Run `sourcewizard login`
 2. **Server Starts**: Local callback server starts on random port
 3. **Display URL**: CLI shows the callback endpoint URL
-4. **External Web App**: Use your web application to authenticate
-5. **Callback**: Web app posts tokens to the callback URL
-6. **Success**: CLI receives tokens and continues authenticated
+4. **Browser Opens**: Browser opens to your login page
+5. **External Web App**: Use your web application to authenticate
+6. **Callback**: Web app posts tokens to the callback URL
+7. **Success**: CLI receives tokens and continues authenticated
+
+### Automatic Token Refresh 🔄
+
+The CLI now keeps you logged in automatically without needing to re-authenticate every hour:
+
+**✨ What this means for you:**
+
+- **Stay logged in**: No more frequent "please login again" interruptions
+- **Seamless experience**: CLI automatically refreshes your session in the background
+- **Proactive refresh**: Tokens are renewed before they expire (5-minute safety window)
+- **Smart fallback**: If refresh fails, you'll get a clear message to login again
+
+**🔧 How it works:**
+
+- Every time you run a CLI command, it checks if your tokens need refreshing
+- Uses your stored refresh token to get new access tokens automatically
+- Happens transparently - you won't notice unless there's an issue
+- Maintains security by clearing tokens if refresh fails
 
 ### Visual Flow
 
@@ -48,17 +57,15 @@ sourcewizard login -e your@email.com -p yourpassword
 Terminal                           Browser → External Web App
 --------                           -------------------------
 $ sourcewizard login          →   [Browser Opens]
-🌐 Starting auth server...         ┌─────────────────────────┐
-🔗 Server running on port 3847     │  🧙‍♂️ Your Login Page   │
-📡 Callback endpoint:              │                         │
-   localhost:3847/auth/callback    │ Email: [_____]          │
-🌐 Opening browser...              │ Pass:  [_____]          │
-🔗 Login page opened:              │   [Sign In]             │
-   https://your-app.com/login      └─────────────────────────┘
-⏳ Waiting for callback...                   ↓
+                                   ┌─────────────────────────┐
+                                   │  🧙‍♂️ Your Login Page   │
+                                   │                         │
+                                   │ Email: [_____]          │
+                                   │ Pass:  [_____]          │
+                                   │   [Sign In]             │
+✅ Successfully logged in!         └─────────────────────────┘
+Welcome back, user@ex.com                   ↓
                                    [POST to callback URL]
-✅ Successfully logged in!
-Welcome back, user@ex.com
 ```
 
 ## Integration with Web Applications
@@ -134,23 +141,17 @@ The callback endpoint expects:
 - **🔙 Fallback**: Automatic CLI fallback if callback fails
 - **🔗 Integration Ready**: Works with any web application
 - **🌐 CORS Enabled**: Supports cross-origin requests from web pages
+- **🔇 Silent Operation**: Minimal output, clean user experience
 
 ## Troubleshooting
 
-### Callback Authentication Issues
+### Web Authentication Issues
 
-If callback authentication fails, the CLI automatically falls back to CLI-based authentication:
+If web authentication fails, you'll see a clean error message:
 
 ```bash
-🚀 Starting web-based authentication...
-🌐 Starting authentication server...
-🔗 Authentication server running on port 3847
-❌ Web login failed: Authentication timeout
-
-⚠️  Falling back to CLI login...
-📝 Using CLI-based authentication...
-Email: your@email.com
-Password: ********
+$ sourcewizard login
+❌ Login failed: Authentication timeout - please try again
 ```
 
 ### Common Issues
@@ -158,17 +159,10 @@ Password: ********
 1. **Port conflicts**: System automatically chooses available ports
 2. **Timeout**: 5-minute limit for authentication callback
 3. **Invalid callback data**: Check required fields in POST request
-4. **Network issues**: CLI fallback handles connectivity problems
+4. **Network issues**: Ensure localhost connections are allowed
+5. **Browser issues**: Make sure browser can open the login page
 
-### Force CLI Mode
-
-For headless servers or if you prefer CLI authentication:
-
-```bash
-sourcewizard login --cli
-```
-
-### Testing the Callback Endpoint
+### Manual Testing
 
 You can test the callback endpoint manually:
 
@@ -201,17 +195,16 @@ curl -X POST http://localhost:PORT/auth/callback \
 - **Per-Session Isolation**: Each login gets its own server instance
 - **CORS Enabled**: Allows cross-origin requests but only on localhost
 
-## Benefits Over CLI-Only Auth
+## Benefits
 
-| Feature              | CLI Auth               | Callback Auth          |
-| -------------------- | ---------------------- | ---------------------- |
-| Password Visibility  | ⚠️ Visible in terminal | ✅ Hidden in web app   |
-| Port Conflicts       | ✅ N/A                 | ✅ Auto-assigned ports |
-| External Integration | ❌ Not possible        | ✅ Web app integration |
-| OAuth Support        | ❌ Not possible        | ✅ Via web application |
-| 2FA Support          | ❌ Not possible        | ✅ Via web application |
-| User Trust           | ⚠️ CLI credentials     | ✅ Familiar web flow   |
-| Stateless            | ✅ Yes                 | ✅ Per-session servers |
+- **🔐 Enhanced Security**: No password exposure in terminal
+- **🎯 Random Ports**: No conflicts with existing services
+- **🔗 Integration Ready**: Easy integration with existing web applications
+- **🔄 Stateless**: Each login session is independent
+- **🌐 Cross-Origin Support**: CORS enabled for web page integration
+- **⚡ Fast & Lightweight**: Minimal overhead callback server
+- **🛡️ Secure**: Localhost-only with automatic cleanup
+- **🎨 Modern UX**: Familiar web-based authentication flow
 
 ## Advanced Usage
 

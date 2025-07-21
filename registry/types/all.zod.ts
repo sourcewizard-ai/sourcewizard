@@ -14,6 +14,7 @@ export const PackageConfigSchema = z.object({
 });
 
 const TYPECONF_SCHEMAS_MAP = {
+  "registry/mailchimp/pkg.config.ts": PackageConfigSchema,
   "registry/clerk/pkg.config.ts": PackageConfigSchema,
 };
 

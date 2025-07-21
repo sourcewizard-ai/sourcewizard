@@ -6,7 +6,7 @@ This document describes the implementation of web-based authentication for the S
 
 ## Problem Statement
 
-The original CLI authentication required users to enter their email and password directly in the terminal, which has several drawbacks:
+Traditional CLI authentication methods have several limitations:
 
 1. **Security**: Plain text password entry in terminal history
 2. **User Experience**: No visual feedback or modern UI elements
@@ -17,22 +17,22 @@ The original CLI authentication required users to enter their email and password
 
 ### Components
 
-1. **Web Authentication Server** (`src/shared/web-auth-server.ts`)
+1. **Web Authentication Module** (`src/shared/cli-web-auth/`)
 
    - Lightweight Express.js server on random localhost port
    - Provides callback endpoint for authentication token exchange
    - No web page serving - assumes external web application
+   - Complete authentication module with organized files:
+     - `server.ts` - WebAuthServer class for callback handling
+     - `auth.ts` - CLIAuth class for authentication logic
+     - `types.ts` - TypeScript interfaces
+     - `index.ts` - Module exports
 
-2. **Enhanced CLI Auth** (`src/shared/cli-auth.ts`)
-
-   - New `loginWithBrowser()` method
-   - Creates server instance per login session
-   - Waits for authentication callback from external web app
-
-3. **Updated CLI Commands** (`src/cli/index.ts`)
-   - Web callback authentication as default method
-   - `--cli` flag for CLI-only authentication
-   - Automatic fallback on web login failure
+2. **Updated CLI Commands** (`src/cli/index.ts`)
+   - Web callback authentication as the only method
+   - Custom login page URL support
+   - Clean error handling without fallbacks
+   - Imports authentication from consolidated cli-web-auth module
 
 ### Authentication Flow
 
@@ -206,6 +206,58 @@ fetch(callbackUrl, {
 2. **Firewall**: May need localhost exception for random ports
 3. **External Apps**: Web applications need callback URL integration
 4. **Dependencies**: Ensure Express.js works on target platforms
+
+## Token Management
+
+### Automatic Token Refresh
+
+The CLI now implements automatic token refresh to keep users logged in without manual intervention. This feature ensures users don't get logged out every hour due to access token expiration.
+
+#### How It Works
+
+1. **Token Storage Enhancement**: The `TokenStorage` class now accepts a Supabase auth client to perform refresh operations
+2. **Proactive Refresh**: When `getTokens()` is called, it checks if tokens expire within 5 minutes and automatically refreshes them
+3. **Seamless Integration**: Token refresh happens transparently during CLI startup via `CLIAuth.initialize()`
+4. **Graceful Degradation**: If refresh fails (e.g., revoked refresh token), tokens are cleared and user needs to login again
+
+#### Implementation Details
+
+**TokenStorage Updates:**
+
+- Constructor now accepts optional `SupabaseAuthClient` parameter
+- New `refreshTokens()` method uses Supabase's `refreshSession()` API
+- Enhanced `getTokens()` method with automatic refresh logic
+- Refresh attempts when tokens expire within 5 minutes
+
+**CLIAuth Updates:**
+
+- Passes auth client to TokenStorage constructor
+- Enhanced `initialize()` method with automatic session restoration
+- Improved error handling for session restoration failures
+
+**Key Features:**
+
+- **Proactive Refresh**: Refreshes tokens before they expire (5-minute threshold)
+- **Error Handling**: Gracefully handles refresh failures and network errors
+- **Backwards Compatibility**: Works without auth client (no refresh, but doesn't break)
+- **Secure Storage**: Maintains existing file permission restrictions (0o600)
+
+#### User Experience
+
+- Users remain logged in across CLI sessions without re-authentication
+- No interruption to workflow due to token expiration
+- Automatic session restoration on CLI startup
+- Clear error messages when authentication is required
+
+#### Testing
+
+Comprehensive test coverage includes:
+
+- Valid token scenarios (no refresh needed)
+- Automatic refresh when tokens expire soon
+- Failed refresh scenarios with token cleanup
+- Network error handling
+- Backwards compatibility without auth client
 
 ## Conclusion
 

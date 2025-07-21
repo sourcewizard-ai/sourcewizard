@@ -14,7 +14,9 @@
     "ink-ui": "node --loader ts-node/esm src/cli/ink-ui-cli.ts",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "import-registry": "tsx scripts/insert-registry-configs.ts",
+    "import-registry:dry-run": "tsx scripts/insert-registry-configs.ts --dry-run"
   },
   "keywords": [
     "sourcewizard",

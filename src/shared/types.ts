@@ -36,28 +36,28 @@ export interface CodeSnippet {
 }
 
 export enum PackageCategory {
-  UTILITY = 'utility',
-  FRAMEWORK = 'framework',
-  LIBRARY = 'library',
-  TOOL = 'tool',
-  TESTING = 'testing',
-  DATABASE = 'database',
-  AUTH = 'auth',
-  UI = 'ui',
-  API = 'api',
-  OTHER = 'other'
+  UTILITY = "utility",
+  FRAMEWORK = "framework",
+  LIBRARY = "library",
+  TOOL = "tool",
+  TESTING = "testing",
+  DATABASE = "database",
+  AUTH = "auth",
+  UI = "ui",
+  API = "api",
+  OTHER = "other",
 }
 
 export enum CodeCategory {
-  FUNCTION = 'function',
-  CLASS = 'class',
-  COMPONENT = 'component',
-  HOOK = 'hook',
-  UTILITY = 'utility',
-  CONFIGURATION = 'configuration',
-  TEMPLATE = 'template',
-  SNIPPET = 'snippet',
-  OTHER = 'other'
+  FUNCTION = "function",
+  CLASS = "class",
+  COMPONENT = "component",
+  HOOK = "hook",
+  UTILITY = "utility",
+  CONFIGURATION = "configuration",
+  TEMPLATE = "template",
+  SNIPPET = "snippet",
+  OTHER = "other",
 }
 
 export interface SearchResult {
@@ -74,7 +74,7 @@ export interface SearchOptions {
   language?: string;
   limit?: number;
   offset?: number;
-  sortBy?: 'relevance' | 'popularity' | 'date' | 'name';
+  sortBy?: "relevance" | "popularity" | "date" | "name";
   includePackages?: boolean;
   includeSnippets?: boolean;
 }
@@ -110,7 +110,7 @@ export interface AIInstallationInstruction {
 }
 
 export interface RegistryEntry {
-  type: 'package' | 'snippet';
+  type: "package" | "snippet";
   data: Package | CodeSnippet;
   metadata: {
     addedDate: Date;
@@ -134,28 +134,28 @@ export interface RegistryConfig {
 }
 
 export interface MCPSearchCommand {
-  name: 'search_packages';
-  description: 'Search for packages and code snippets';
+  name: "search_packages";
+  description: "Search for packages and code snippets";
   inputSchema: {
-    type: 'object';
+    type: "object";
     properties: {
-      query: { type: 'string' };
+      query: { type: "string" };
       options?: SearchOptions;
     };
-    required: ['query'];
+    required: ["query"];
   };
 }
 
 export interface MCPInstallCommand {
-  name: 'install_package';
-  description: 'Install a package or code snippet';
+  name: "install_package";
+  description: "Install a package or code snippet";
   inputSchema: {
-    type: 'object';
+    type: "object";
     properties: {
-      packageName: { type: 'string' };
+      packageName: { type: "string" };
       options?: InstallationOptions;
     };
-    required: ['packageName'];
+    required: ["packageName"];
   };
 }
 
@@ -173,7 +173,7 @@ export interface MCPResponse<T = any> {
 export interface CLIConfig {
   defaultRegistry: string;
   registries: RegistryConfig[];
-  aiProvider?: 'openai' | 'anthropic' | 'local';
+  aiProvider?: "openai" | "anthropic" | "local";
   aiApiKey?: string;
   defaultInstallPath?: string;
   verboseLogging: boolean;
@@ -181,14 +181,48 @@ export interface CLIConfig {
   cacheExpiry: number; // in minutes
 }
 
+export interface RepositoryAction {
+  command: string;
+  scope: "root" | string; // 'root' for repository-wide, or relative path for package-specific
+}
+
+export interface RepositoryActions {
+  build: RepositoryAction[];
+  test: RepositoryAction[];
+  deploy: RepositoryAction[];
+  dev: RepositoryAction[];
+  lint: RepositoryAction[];
+  format: RepositoryAction[];
+  install: RepositoryAction[];
+  clean: RepositoryAction[];
+  typecheck: RepositoryAction[];
+  [key: string]: RepositoryAction[];
+}
+
 export interface ProjectContext {
   name: string;
-  version: string;
-  packageManager: 'npm' | 'yarn' | 'pnpm' | 'bun';
-  framework?: string;
+  actions: RepositoryActions;
+  targets?: Record<string, TargetInfo>; // Map of "path:name" -> target info
+}
+
+export interface TargetInfo {
+  name: string;
+  path: string;
   language: string;
-  dependencies: Record<string, string>;
-  devDependencies: Record<string, string>;
-  scripts: Record<string, string>;
-  projectType: 'web' | 'node' | 'mobile' | 'desktop' | 'library' | 'cli' | 'other';
+  version?: string;
+  framework?: string;
+  package_manager?:
+    | "npm"
+    | "yarn"
+    | "pnpm"
+    | "bun"
+    | "pip"
+    | "cargo"
+    | "go"
+    | "maven"
+    | "gradle"
+    | "composer"
+    | "bundle";
+  dependency_files: string[]; // Full paths relative to repo root (e.g., "./package.json", "./frontend/package.json")
+  env_files: string[]; // Full paths relative to repo root, includes inherited env files
 }

@@ -52,10 +52,10 @@ CREATE TRIGGER trigger_packages_updated_at
 -- Row Level Security (RLS) policies
 ALTER TABLE packages ENABLE ROW LEVEL SECURITY;
 
--- Policy: Users can only see their own packages
-CREATE POLICY packages_user_isolation ON packages
-    FOR ALL
-    USING (auth.uid() = user_id);
+-- Policy: Users can read any packages
+CREATE POLICY packages_read_all ON packages
+    FOR SELECT
+    USING (true);
 
 -- Policy: Users can insert their own packages
 CREATE POLICY packages_user_insert ON packages

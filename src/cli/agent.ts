@@ -1,73 +1,57 @@
-import { PackageConfig } from "@/registry/types/all.js";
-import { detectRepo } from "../shared/repository-detector.js";
-import { readConfig } from "@typeconf/sdk";
-import { CoreMessage } from "ai";
-import { AIAgent } from "../shared/ai-agent.js";
-import { readRelevantFiles, logFileInfo } from "../shared/file-utils.js";
+import { detectRepo } from "../shared/install-agent/repository-detector.js";
+import { AIAgent } from "../shared/install-agent/ai-agent.js";
 
-interface Task {
-  name: string;
-  prompt: string;
+export async function search(query: string, path: string) {
+  const repo = await detectRepo(path);
+
+  // Create and configure the AI agent
+  const agent = new AIAgent({
+    cwd: path,
+    projectContext: repo,
+    serverUrl: "http://localhost:3000",
+    apiKey: "1234567890",
+  });
+
+  const result = await agent.searchPackages(query);
+  console.log("Search result:", result);
+
+  return result;
 }
 
-interface Agent {
-  name: string;
-  tasks: Task[];
-}
+export async function install(
+  name: string,
+  path: string,
+  onStepFinish: (step: any) => void
+) {
+  const repo = await detectRepo(path);
 
-function search() {
-  // find intent via semantic search
-}
+  // Create and configure the AI agent
+  const agent = new AIAgent({
+    cwd: path,
+    projectContext: repo,
+    serverUrl: "http://localhost:3000",
+    apiKey: "1234567890",
+    onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
+      onStepFinish({ text, toolCalls, toolResults, finishReason, usage });
+      // console.log("Agent step:", {
+      //   text,
+      //   toolCalls,
+      //   toolResults,
+      //   finishReason,
+      //   usage,
+      // });
+    },
+  });
 
-export async function install(name: string) {
-  const repo = await detectRepo();
-  console.log(repo);
+  try {
+    // Execute the installation task with the AI agent
+    const result = await agent.installPackage(name);
+    console.log("Installation result:", result);
 
-  // Get current working directory for file operations
-  const cwd = process.cwd();
-
-  const config: PackageConfig = await readConfig(
-    "/home/ivan/root/data/dev/repowizard/registry" + "/clerk/pkg"
-  );
-  console.log(config.setup_prompt);
-
-  // Read relevant files if pattern is defined
-  if (config.relevant_files_pattern) {
-    const relevantFiles = await readRelevantFiles(
-      cwd,
-      config.relevant_files_pattern
-    );
-
-    // Log file information with token counts
-    logFileInfo(relevantFiles, config.setup_prompt);
-
-    // Create and configure the AI agent
-    const agent = new AIAgent({
-      cwd,
-      onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
-        console.log("Agent step:", {
-          text,
-          toolCalls,
-          toolResults,
-          finishReason,
-          usage,
-        });
-      },
-    });
-
-    try {
-      // Execute the installation task with the AI agent
-      const result = await agent.executeTask(config.setup_prompt);
-      console.log("Installation result:", result);
-
-      return result;
-    } catch (error) {
-      console.error("Error during installation:", error);
-      throw error;
-    }
-
-    // Now you have access to all relevant files in the relevantFiles Map
-    // You can use this with the LLM or for other processing
+    return result;
+  } catch (error) {
+    console.error("Error during installation:", error);
+    throw error;
   }
 
   // determine repo language, framework
@@ -76,5 +60,3 @@ export async function install(name: string) {
   // install packages
   // run llm with relevant files to make changes
 }
-
-export { detectRepo };

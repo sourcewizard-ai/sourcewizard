@@ -5,6 +5,7 @@ import { Box, Text } from "ink";
 import Link from "ink-link";
 import { ProgressBar } from "./components/ui";
 import { Input } from "./components/ui/Input";
+import { install } from "./agent";
 
 interface AppProps {
   packageName: string;
@@ -16,26 +17,35 @@ const App: React.FC<AppProps> = ({ packageName }: AppProps) => {
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     if (stage === "start") {
-      setStage("installing");
-      setProgress(0);
+      (async () => {
+        setProgress(0);
+        await install(
+          packageName,
+          process.cwd(),
+          ({ text, toolCalls, toolResults, finishReason, usage }) => {
+            setStage(text || "Thinking...");
+          }
+        );
+      })();
     }
   }, [stage]);
 
   useEffect(() => {
-    if (stage !== "installing") return;
-    let step = 0;
-    const totalSteps = 5;
-    setProgress(0);
-    const interval = setInterval(() => {
-      step += 1;
-      setProgress((step / totalSteps) * 100);
-      if (step >= totalSteps) {
-        clearInterval(interval);
-        setStage("done");
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [stage]);
+    if (stage !== "start") {
+      let step = 0;
+      const totalSteps = 60;
+      setProgress(0);
+      const interval = setInterval(() => {
+        step += 1;
+        setProgress((step / totalSteps) * 100);
+        if (step >= totalSteps) {
+          clearInterval(interval);
+          setStage("done");
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [stage === "start"]); // Only trigger when we move away from "start"
 
   const apiKeyStage = () => {
     return (
@@ -64,34 +74,47 @@ const App: React.FC<AppProps> = ({ packageName }: AppProps) => {
     );
   };
 
+  const installStage = (packageName: string) => {
+    return (
+      <Box flexDirection="column" paddingLeft={2}>
+        <Box paddingY={1}>
+          <Text color="black" bold>
+            Installing Package
+          </Text>
+        </Box>
+        <Box flexDirection="column" paddingLeft={2}>
+          <Text color="black">Installing {packageName}</Text>
+          <Box width={65} height={9} flexWrap="wrap" overflow="hidden">
+            <Text color="black">Status: {stage}</Text>
+          </Box>
+          <ProgressBar current={progress} total={100} width="90%" />
+        </Box>
+      </Box>
+    );
+  };
+
   return (
     <AppLayout title="Install">
       <Box flexDirection="row">
         <Box width="25%" flexDirection="column" backgroundColor="#A1C7EB">
+          <Box flexGrow={1} paddingY={2} paddingLeft={2}>
+            <Text color="black">Insert API Key</Text>
+          </Box>
+          <Box flexGrow={1} paddingY={2} paddingLeft={2}>
+            <Text color="black">Analyze repository</Text>
+          </Box>
           <Box
-            flexGrow={1}
-            paddingY={1}
-            paddingLeft={2}
             backgroundColor="#0C246C"
+            flexGrow={1}
+            paddingLeft={2}
+            paddingY={2}
           >
-            <Text color="#ffffff">Insert API Key</Text>
-          </Box>
-          <Box flexGrow={1} paddingLeft={2} paddingY={1}>
-            <Text color="black">Install Package</Text>
-          </Box>
-          <Box flexGrow={1} paddingLeft={2} paddingY={1}>
-            <Text color="black">Integrate Package</Text>
+            <Text color="#ffffff">Integrate Package</Text>
           </Box>
         </Box>
         <Box width="75%" flexDirection="column">
-          {apiKeyStage()}
-          {/* <Box>
-            <Text color="black">Insert API Key</Text>
-          </Box>
-          <Text color="black">Installing {packageName}</Text>
-          <Text color="black">Stage: {stage}</Text>
-          <Text color="black">Query: {value}</Text>
-          <ProgressBar current={progress} total={100} width="100%" /> */}
+          {/* {apiKeyStage()} */}
+          {installStage(packageName)}
         </Box>
       </Box>
       {/* <Box flexDirection="column" alignItems="center" justifyContent="center">

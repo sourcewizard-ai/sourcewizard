@@ -3,3 +3,4 @@ import fs from 'fs';
 
 export * from './all' // Your config types
 export { default as clerkPkgConfig } from '../clerk/pkg.config'
+export { default as mailchimpPkgConfig } from '../mailchimp/pkg.config'

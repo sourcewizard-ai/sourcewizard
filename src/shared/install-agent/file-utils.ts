@@ -11,8 +11,8 @@ import { glob } from "glob";
 export async function readRelevantFiles(
   cwd: string,
   relevantFilesPattern: string[]
-): Promise<Map<string, string>> {
-  const fileMap = new Map<string, string>();
+): Promise<Record<string, string>> {
+  const fileMap: Record<string, string> = {};
 
   for (const pattern of relevantFilesPattern) {
     try {
@@ -30,7 +30,7 @@ export async function readRelevantFiles(
           const content = await fs.readFile(filePath, "utf-8");
           // Use relative path as key for cleaner paths
           const relativePath = path.relative(cwd, filePath);
-          fileMap.set(relativePath, content);
+          fileMap[relativePath] = content;
         } catch (error) {
           console.warn(`Failed to read file ${filePath}:`, error);
           // Continue with other files instead of failing completely

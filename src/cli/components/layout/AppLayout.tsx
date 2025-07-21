@@ -59,7 +59,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           backgroundColor="#000"
           paddingRight={1}
           paddingBottom={1}
-          width="55%"
+          width="80%"
         >
           <Box backgroundColor="#C0C7C8" marginLeft={-1} width="100%">
             {children}

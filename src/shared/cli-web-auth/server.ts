@@ -1,21 +1,20 @@
 import express from "express";
 import cors from "cors";
-import { tokenStorage, StoredTokens } from "./token-storage.js";
-
-export interface WebAuthOptions {
-  port?: number; // 0 for random port
-}
+import { TokenStorage, StoredTokens } from "./token-storage.js";
+import { WebAuthServerOptions } from "./types.js";
 
 export class WebAuthServer {
   private app: express.Application;
   private server: any;
   private actualPort: number | null = null;
+  private tokenStorage: TokenStorage;
   private authPromise: Promise<StoredTokens> | null = null;
   private authResolve: ((tokens: StoredTokens) => void) | null = null;
   private authReject: ((error: Error) => void) | null = null;
 
-  constructor(options: WebAuthOptions = {}) {
+  constructor(options: WebAuthServerOptions) {
     this.app = express();
+    this.tokenStorage = options.tokenStorage;
     this.setupRoutes();
   }
 
@@ -35,7 +34,6 @@ export class WebAuthServer {
     // Handle authentication callback
     this.app.post("/auth/callback", async (req, res) => {
       try {
-        console.log("📡 Received authentication callback");
         const { access_token, refresh_token, expires_at, user } = req.body;
 
         if (!access_token || !refresh_token || !user) {
@@ -52,23 +50,16 @@ export class WebAuthServer {
           },
         };
 
-        console.log("💾 Storing authentication tokens...");
         // Store tokens
-        await tokenStorage.storeTokens(tokens);
+        await this.tokenStorage.storeTokens(tokens);
 
-        console.log("✅ Resolving authentication promise...");
         // Resolve the auth promise
         if (this.authResolve) {
           this.authResolve(tokens);
-          console.log("🎉 Authentication promise resolved successfully");
-        } else {
-          console.warn("⚠️ No auth resolver available");
         }
 
         res.json({ success: true, message: "Authentication successful!" });
       } catch (error) {
-        console.error("❌ Auth callback error:", error);
-
         if (this.authReject) {
           this.authReject(
             error instanceof Error ? error : new Error("Authentication failed")
@@ -106,9 +97,6 @@ export class WebAuthServer {
       this.server = this.app
         .listen(port, "localhost", () => {
           this.actualPort = this.server.address()?.port || port;
-          console.log(
-            `🔗 Auth server running on http://localhost:${this.actualPort}`
-          );
           resolve(this.actualPort);
         })
         .on("error", (error) => {
