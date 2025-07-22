@@ -4,7 +4,6 @@ import { AIAgent } from "../shared/install-agent/ai-agent.js";
 export async function search(query: string, path: string) {
   const repo = await detectRepo(path);
 
-  // Create and configure the AI agent
   const agent = new AIAgent({
     cwd: path,
     projectContext: repo,
@@ -25,7 +24,6 @@ export async function install(
 ) {
   const repo = await detectRepo(path);
 
-  // Create and configure the AI agent
   const agent = new AIAgent({
     cwd: path,
     projectContext: repo,
@@ -53,10 +51,4 @@ export async function install(
     console.error("Error during installation:", error);
     throw error;
   }
-
-  // determine repo language, framework
-  // get config and installation prompt
-  // get relevant files ✓ (now implemented)
-  // install packages
-  // run llm with relevant files to make changes
 }

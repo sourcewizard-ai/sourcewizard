@@ -18,20 +18,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   borderColor = "cyan",
 }) => {
   return (
-    // <Box flexDirection="column" height="100%">
-    //   {/* Header */}
-    //   <Box
-    //     backgroundColor="blue"
-    //     borderStyle="double"
-    //     borderColor="blue"
-    //     padding={1}
-    //     justifyContent="center"
-    //   >
-    //     <Text color="white" bold>
-    //       {title}
-    //     </Text>
-    //   </Box>
-
     // {/* Main content area with gradient background */}
     <Box
       flexDirection="column"

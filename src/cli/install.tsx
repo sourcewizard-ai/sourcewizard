@@ -23,6 +23,7 @@ const App: React.FC<AppProps> = ({ packageName }: AppProps) => {
           packageName,
           process.cwd(),
           ({ text, toolCalls, toolResults, finishReason, usage }) => {
+            // TODO: Handle step results
             setStage(text || "Thinking...");
           }
         );
@@ -79,12 +80,15 @@ const App: React.FC<AppProps> = ({ packageName }: AppProps) => {
       <Box flexDirection="column" paddingLeft={2}>
         <Box paddingY={1}>
           <Text color="black" bold>
-            Installing Package
+            Installing Package: {packageName}
           </Text>
         </Box>
         <Box flexDirection="column" paddingLeft={2}>
-          <Text color="black">Installing {packageName}</Text>
-          <Box width={65} height={9} flexWrap="wrap" overflow="hidden">
+          <Box width={50} height={8} flexWrap="wrap" overflow="hidden">
+            <Text color="black">
+              Please sit back and relax while the agent integrates the package.
+            </Text>
+            <Text color="black"> </Text>
             <Text color="black">Status: {stage}</Text>
           </Box>
           <ProgressBar current={progress} total={100} width="90%" />
@@ -96,61 +100,14 @@ const App: React.FC<AppProps> = ({ packageName }: AppProps) => {
   return (
     <AppLayout title="Install">
       <Box flexDirection="row">
-        <Box width="25%" flexDirection="column" backgroundColor="#A1C7EB">
-          <Box flexGrow={1} paddingY={2} paddingLeft={2}>
-            <Text color="black">Insert API Key</Text>
-          </Box>
-          <Box flexGrow={1} paddingY={2} paddingLeft={2}>
-            <Text color="black">Analyze repository</Text>
-          </Box>
-          <Box
-            backgroundColor="#0C246C"
-            flexGrow={1}
-            paddingLeft={2}
-            paddingY={2}
-          >
-            <Text color="#ffffff">Integrate Package</Text>
-          </Box>
+        <Box width="2%" flexDirection="column">
+          <Box flexGrow={1} paddingY={7}></Box>
         </Box>
-        <Box width="75%" flexDirection="column">
+        <Box width="98%" flexDirection="column">
           {/* {apiKeyStage()} */}
           {installStage(packageName)}
         </Box>
       </Box>
-      {/* <Box flexDirection="column" alignItems="center" justifyContent="center">
-        <Text color="black">Installing {packageName}</Text>
-        <Text color="black">Stage: {stage}</Text>
-        <Text color="black">Query: {value}</Text>
-        <ProgressBar current={progress} total={100} />
-      </Box>
-      <Box
-        marginLeft={-4}
-        marginTop={-8}
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={3}
-        paddingRight={3}
-        width="110%"
-        backgroundColor="cyan"
-        flexDirection="column"
-        alignItems="center"
-        justifyContent="center"
-        position="absolute"
-        display={value.length > 0 ? "none" : "flex"}
-      >
-        <Text color="black">
-          This tool requires an API key. Visit https://dashboard.clerk.com/ and
-          then insert the API token here:
-        </Text>
-        <Input
-          onSubmit={setValue}
-          color="black"
-          backgroundColor="#ffffff"
-          width="100%"
-          secret
-        />
-        <Text color="black">When you are ready, press enter to continue.</Text>
-      </Box> */}
     </AppLayout>
   );
 };
