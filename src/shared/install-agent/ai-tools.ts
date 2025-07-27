@@ -2,8 +2,7 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import { tool } from "ai";
 import z from "zod";
-import { getBulkTargetData } from "./repository-detector";
-import { TargetInfo } from "../types";
+import { getBulkTargetData, TargetInfo } from "./repository-detector";
 
 /**
  * Create a read_file tool for AI agents

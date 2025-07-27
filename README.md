@@ -24,8 +24,6 @@ npm install
 npm run dev -- install <package>
 ```
 
-NOTE: We're using a custom version of [ink](https://github.com/vadimdemedes/ink) in the demo that supports background colors, so the TUI wouldn't look as good yet, until the support is merged into the main branch.
-
 ### Adding a new package
 
 Packages are located at `registry/` directory. You can copy the existing one and update the fields.

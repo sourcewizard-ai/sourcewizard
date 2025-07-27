@@ -1,11 +1,51 @@
 import { promises as fs } from "fs";
 import * as path from "path";
-import type {
-  ProjectContext,
-  RepositoryActions,
-  RepositoryAction,
-  TargetInfo,
-} from "../types.js";
+
+export interface RepositoryAction {
+  command: string;
+  scope: "root" | string; // 'root' for repository-wide, or relative path for package-specific
+}
+
+export interface RepositoryActions {
+  build: RepositoryAction[];
+  test: RepositoryAction[];
+  deploy: RepositoryAction[];
+  dev: RepositoryAction[];
+  lint: RepositoryAction[];
+  format: RepositoryAction[];
+  install: RepositoryAction[];
+  clean: RepositoryAction[];
+  typecheck: RepositoryAction[];
+  [key: string]: RepositoryAction[];
+}
+
+export interface ProjectContext {
+  name: string;
+  actions: RepositoryActions;
+  targets?: Record<string, TargetInfo>; // Map of "path:name" -> target info
+}
+
+export interface TargetInfo {
+  name: string;
+  path: string;
+  language: string;
+  version?: string;
+  framework?: string;
+  package_manager?:
+    | "npm"
+    | "yarn"
+    | "pnpm"
+    | "bun"
+    | "pip"
+    | "cargo"
+    | "go"
+    | "maven"
+    | "gradle"
+    | "composer"
+    | "bundle";
+  dependency_files: string[]; // Full paths relative to repo root (e.g., "./package.json", "./frontend/package.json")
+  env_files: string[]; // Full paths relative to repo root, includes inherited env files
+}
 
 // Common directories to ignore even if not in .gitignore
 const DEFAULT_IGNORE_PATTERNS = [

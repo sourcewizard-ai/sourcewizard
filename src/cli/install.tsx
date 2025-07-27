@@ -3,7 +3,7 @@ import { AppLayout } from "./components/layout/AppLayout";
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import Link from "ink-link";
-import { ProgressBar } from "./components/ui";
+import { ProgressBar } from "./components/ui/ProgressBar";
 import { Input } from "./components/ui/Input";
 import { install } from "./agent";
 

@@ -1,7 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { CoreMessage, generateText } from "ai";
 import { createFileOperationTools } from "./ai-tools.js";
-import { ProjectContext } from "../types.js";
+import { ProjectContext } from "./repository-detector.js";
 import { readRelevantFiles } from "./file-utils.js";
 
 export interface AgentOptions {

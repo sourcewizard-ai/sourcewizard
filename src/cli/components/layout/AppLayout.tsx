@@ -1,7 +1,5 @@
-import React from "react";
-import { Box, Text } from "ink";
-import figlet from "figlet";
-
+import React, { useEffect, useState } from "react";
+import { Box, Text, useStdout } from "ink";
 interface AppLayoutProps {
   title: string;
   menuTitle?: string;
@@ -9,6 +7,57 @@ interface AppLayoutProps {
   menuWidth?: number;
   borderColor?: string;
 }
+
+function useStdoutDimensions(): [number, number] {
+  const { stdout } = useStdout();
+  const [dimensions, setDimensions] = useState<[number, number]>([
+    stdout.columns,
+    stdout.rows,
+  ]);
+
+  useEffect(() => {
+    const handler = () => setDimensions([stdout.columns, stdout.rows]);
+    stdout.on("resize", handler);
+    return () => {
+      stdout.off("resize", handler);
+    };
+  }, [stdout]);
+
+  return dimensions;
+}
+
+const GradientBox = ({
+  height,
+  width,
+}: {
+  height?: number | string;
+  width?: number | string;
+}) => {
+  const [columns, rows] = useStdoutDimensions();
+  return (
+    <Box
+      position="absolute"
+      flexDirection="column"
+      height={height}
+      width={width}
+    >
+      {Array.from({ length: rows }).map((_, index) => {
+        const ratio = index / (rows - 1);
+        const r = 0;
+        const g = 0;
+        const b = Math.floor(255 * (1 - ratio));
+        const color = `rgb(${r}, ${g}, ${b})`;
+        return (
+          <Box key={index}>
+            <Text key={index} backgroundColor={color}>
+              {Array.from({ length: columns }).map((_, index) => " ")}
+            </Text>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+};
 
 export const AppLayout: React.FC<AppLayoutProps> = ({
   title,
@@ -18,15 +67,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   borderColor = "cyan",
 }) => {
   return (
-    // {/* Main content area with gradient background */}
-    <Box
-      flexDirection="column"
-      height="100%"
-      width="100%"
-      //   justifyContent="center"
-      //   alignItems="center"
-      backgroundColor="linear-gradient"
-    >
+    <Box flexDirection="column" height="100%" width="100%">
+      <GradientBox />
       <Box position="absolute" flexDirection="column">
         <Text color="white" bold backgroundColor="#0001F2">
           {" "}
