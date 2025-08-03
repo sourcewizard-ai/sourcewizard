@@ -3,7 +3,6 @@ import * as path from "path";
 
 export interface RepositoryAction {
   command: string;
-  scope: "root" | string; // 'root' for repository-wide, or relative path for package-specific
 }
 
 export interface RepositoryActions {
@@ -21,7 +20,6 @@ export interface RepositoryActions {
 
 export interface ProjectContext {
   name: string;
-  actions: RepositoryActions;
   targets?: Record<string, TargetInfo>; // Map of "path:name" -> target info
 }
 
@@ -45,6 +43,10 @@ export interface TargetInfo {
     | "bundle";
   dependency_files: string[]; // Full paths relative to repo root (e.g., "./package.json", "./frontend/package.json")
   env_files: string[]; // Full paths relative to repo root, includes inherited env files
+  entrypoint?: string; // For script targets, the main script file
+  target_type?: "package" | "script"; // Type of target
+  internal_dependencies?: string[]; // Internal project dependencies (relative paths to modules/packages)
+  actions: RepositoryActions; // Target-specific actions
 }
 
 // Common directories to ignore even if not in .gitignore
@@ -101,20 +103,20 @@ interface PackageInfo {
   packageManager?: string;
 }
 
+interface EntrypointScript {
+  name: string;
+  path: string;
+  relativePath: string;
+}
+
+interface InternalDependency {
+  module: string;
+  relativePath: string;
+}
+
 export async function detectRepo(repoPath: string): Promise<ProjectContext> {
   const defaultContext: ProjectContext = {
     name: "unknown",
-    actions: {
-      build: [],
-      test: [],
-      deploy: [],
-      dev: [],
-      lint: [],
-      format: [],
-      install: [],
-      clean: [],
-      typecheck: [],
-    },
   };
 
   try {
@@ -148,13 +150,6 @@ async function analyzeRepositoryRecursive(
   if (Object.keys(targets).length > 0) {
     context.targets = targets;
   }
-
-  // Build repository actions from all packages
-  context.actions = await buildRepositoryActionsFromPackages(
-    repoPath,
-    packages,
-    context
-  );
 
   return context;
 }
@@ -372,7 +367,7 @@ async function analyzePackageFile(
         const packageJson = JSON.parse(content);
         return {
           path: packagePath,
-          relativePath: relativePath || ".",
+          relativePath: relativePath || "//",
           type,
           configFile: "package.json",
           name: packageJson.name,
@@ -387,7 +382,7 @@ async function analyzePackageFile(
         const nameMatch = content.match(/name\s*=\s*"([^"]+)"/);
         return {
           path: packagePath,
-          relativePath: relativePath || ".",
+          relativePath: relativePath || "//",
           type,
           configFile: "Cargo.toml",
           name: nameMatch?.[1],
@@ -402,7 +397,7 @@ async function analyzePackageFile(
         const moduleName = moduleMatch?.[1] || "unknown";
         return {
           path: packagePath,
-          relativePath: relativePath || ".",
+          relativePath: relativePath || "//",
           type,
           configFile: "go.mod",
           name: moduleName.split("/").pop(),
@@ -416,7 +411,7 @@ async function analyzePackageFile(
         const nameMatch = content.match(/<artifactId>([^<]+)<\/artifactId>/);
         return {
           path: packagePath,
-          relativePath: relativePath || ".",
+          relativePath: relativePath || "//",
           type,
           configFile: "pom.xml",
           name: nameMatch?.[1],
@@ -433,7 +428,7 @@ async function analyzePackageFile(
         );
         return {
           path: packagePath,
-          relativePath: relativePath || ".",
+          relativePath: relativePath || "//",
           type,
           configFile: path.basename(filePath),
           name: nameMatch?.[1] || path.basename(packagePath),
@@ -448,7 +443,7 @@ async function analyzePackageFile(
         const composer = JSON.parse(content);
         return {
           path: packagePath,
-          relativePath: relativePath || ".",
+          relativePath: relativePath || "//",
           type,
           configFile: "composer.json",
           name: composer.name,
@@ -461,7 +456,7 @@ async function analyzePackageFile(
       case "ruby": {
         return {
           path: packagePath,
-          relativePath: relativePath || ".",
+          relativePath: relativePath || "//",
           type,
           configFile: "Gemfile",
           name: path.basename(packagePath),
@@ -486,7 +481,7 @@ async function analyzePackageFile(
 
         return {
           path: packagePath,
-          relativePath: relativePath || ".",
+          relativePath: relativePath || "//",
           type,
           configFile: path.basename(filePath),
           name,
@@ -511,7 +506,7 @@ async function determinePrimaryPackage(
 ): Promise<PackageInfo | null> {
   // First, look for a package in the root directory
   const rootPackage = packages.find(
-    (pkg) => pkg.relativePath === "." || pkg.relativePath === ""
+    (pkg) => pkg.relativePath === "//" || pkg.relativePath === ""
   );
   if (rootPackage) {
     return rootPackage;
@@ -619,7 +614,7 @@ function getPackageEnvFiles(
     for (const envFile of packageEnvFiles) {
       // Construct proper relative path from repo root
       const fullPath =
-        pkg.relativePath === "."
+        pkg.relativePath === "//"
           ? `./${envFile}`
           : `./${path.join(pkg.relativePath, envFile)}`;
 
@@ -640,8 +635,8 @@ async function convertPackagesToTargets(
   const allEnvFiles = await collectAllEnvFiles(repoPath, packages);
 
   for (const pkg of packages) {
-    const isRoot = pkg.relativePath === "." || pkg.relativePath === "";
-    const targetPath = isRoot ? "." : pkg.relativePath;
+    const isRoot = pkg.relativePath === "//" || pkg.relativePath === "";
+    const targetPath = isRoot ? "//" : pkg.relativePath;
     const targetName = pkg.name || path.basename(pkg.path);
 
     // Detect dependency files with full paths
@@ -653,7 +648,10 @@ async function convertPackagesToTargets(
     // Get version from package
     const version = await getPackageVersion(pkg);
 
+    // Create the main package target
     const targetKey = isRoot ? `:${targetName}` : `${targetPath}:${targetName}`;
+    const packageActions = await generatePackageActions(pkg, targetPath);
+
     targets[targetKey] = {
       name: targetName,
       path: targetPath,
@@ -663,10 +661,598 @@ async function convertPackagesToTargets(
       package_manager: pkg.packageManager as TargetInfo["package_manager"],
       dependency_files: dependencyFiles,
       env_files: envFiles,
+      target_type: "package",
+      actions: packageActions,
     };
+
+    // Detect entrypoint scripts for this package
+    const entrypoints = await detectEntrypointScripts(pkg, repoPath);
+
+    // Create additional targets for each entrypoint script
+    for (const entrypoint of entrypoints) {
+      // Calculate the script's directory relative to repo root
+      const scriptDir = path.dirname(entrypoint.relativePath);
+      const scriptPath =
+        scriptDir === "." ? "//" : scriptDir.replace(/^\.\//, "");
+
+      // Create target key based on script location, not package location
+      const scriptTargetKey =
+        scriptPath === "//"
+          ? `:${entrypoint.name}`
+          : `${scriptPath}:${entrypoint.name}`;
+
+      // Detect internal dependencies for the script
+      const internalDeps = await detectInternalDependencies(
+        entrypoint,
+        pkg,
+        repoPath
+      );
+
+      // Generate script-specific actions
+      const scriptActions = await generateScriptActions(
+        entrypoint,
+        pkg,
+        scriptPath
+      );
+
+      targets[scriptTargetKey] = {
+        name: entrypoint.name,
+        path: scriptPath,
+        language: pkg.language,
+        version,
+        framework: pkg.framework,
+        package_manager: pkg.packageManager as TargetInfo["package_manager"],
+        dependency_files: dependencyFiles,
+        env_files: envFiles,
+        entrypoint: entrypoint.relativePath,
+        target_type: "script",
+        internal_dependencies:
+          internalDeps.length > 0 ? internalDeps : undefined,
+        actions: scriptActions,
+      };
+    }
   }
 
   return targets;
+}
+
+async function detectEntrypointScripts(
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<EntrypointScript[]> {
+  switch (pkg.type) {
+    case "python":
+      return await detectPythonEntrypoints(pkg, repoPath);
+    case "node":
+      return await detectNodeEntrypoints(pkg, repoPath);
+    case "go":
+      return await detectGoEntrypoints(pkg, repoPath);
+    case "rust":
+      return await detectRustEntrypoints(pkg, repoPath);
+    case "java-maven":
+    case "java-gradle":
+      return await detectJavaEntrypoints(pkg, repoPath);
+    default:
+      return [];
+  }
+}
+
+async function detectPythonEntrypoints(
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<EntrypointScript[]> {
+  const entrypoints: EntrypointScript[] = [];
+
+  try {
+    const files = await findPythonFiles(pkg.path);
+
+    for (const file of files) {
+      try {
+        const content = await fs.readFile(file, "utf-8");
+
+        // Check if the file contains if __name__ == "__main__": pattern
+        const hasMainBlock = /if\s+__name__\s*==\s*["']__main__["']\s*:/.test(
+          content
+        );
+
+        if (hasMainBlock) {
+          const fileName = path.basename(file, ".py");
+          const relativePath = path.relative(repoPath, file);
+
+          entrypoints.push({
+            name: fileName,
+            path: file,
+            relativePath: relativePath.startsWith(".")
+              ? relativePath
+              : `./${relativePath}`,
+          });
+        }
+      } catch (error) {
+        // Skip files that can't be read
+        console.debug(`Skipping file ${file}: ${error}`);
+      }
+    }
+  } catch (error) {
+    console.debug(
+      `Error detecting Python entrypoints in ${pkg.path}: ${error}`
+    );
+  }
+
+  return entrypoints;
+}
+
+async function findPythonFiles(dirPath: string): Promise<string[]> {
+  const pythonFiles: string[] = [];
+
+  // Common directories to ignore when scanning for Python entrypoints
+  const ignoreDirectories = [
+    "__pycache__",
+    ".pytest_cache",
+    "tests",
+    "test",
+    ".git",
+    // Virtual environment directories
+    "venv",
+    "env",
+    ".venv",
+    ".env",
+    "virtualenv",
+    "ENV",
+    // Other common directories to skip
+    "node_modules",
+    ".tox",
+    "dist",
+    "build",
+    "*.egg-info",
+    ".coverage",
+    "htmlcov",
+  ];
+
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+
+      if (entry.isFile() && entry.name.endsWith(".py")) {
+        // Skip common non-entrypoint files
+        if (!["__init__.py", "setup.py", "conftest.py"].includes(entry.name)) {
+          pythonFiles.push(fullPath);
+        }
+      } else if (entry.isDirectory()) {
+        // Check if this directory should be ignored
+        const shouldIgnore = ignoreDirectories.some((pattern) => {
+          if (pattern.includes("*")) {
+            // Simple glob matching for patterns like "*.egg-info"
+            const regex = new RegExp(pattern.replace(/\*/g, ".*"));
+            return regex.test(entry.name);
+          }
+          return entry.name === pattern;
+        });
+
+        if (!shouldIgnore) {
+          const subFiles = await findPythonFiles(fullPath);
+          pythonFiles.push(...subFiles);
+        }
+      }
+    }
+  } catch (error) {
+    console.debug(`Error reading directory ${dirPath}: ${error}`);
+  }
+
+  return pythonFiles;
+}
+
+// Stub functions for other languages - to be implemented later
+async function detectNodeEntrypoints(
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<EntrypointScript[]> {
+  // TODO: Implement Node.js entrypoint detection
+  // Could look for files with require.main === module or specific patterns
+  return [];
+}
+
+async function detectGoEntrypoints(
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<EntrypointScript[]> {
+  // TODO: Implement Go entrypoint detection
+  // Could look for main() functions in main packages
+  return [];
+}
+
+async function detectRustEntrypoints(
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<EntrypointScript[]> {
+  // TODO: Implement Rust entrypoint detection
+  // Could look for main.rs files or bin entries in Cargo.toml
+  return [];
+}
+
+async function detectJavaEntrypoints(
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<EntrypointScript[]> {
+  // TODO: Implement Java entrypoint detection
+  // Could look for public static void main methods
+  return [];
+}
+
+async function detectInternalDependencies(
+  entrypoint: EntrypointScript,
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<string[]> {
+  switch (pkg.type) {
+    case "python":
+      return await detectPythonInternalDependencies(entrypoint, pkg, repoPath);
+    case "node":
+      return await detectNodeInternalDependencies(entrypoint, pkg, repoPath);
+    case "go":
+      return await detectGoInternalDependencies(entrypoint, pkg, repoPath);
+    case "rust":
+      return await detectRustInternalDependencies(entrypoint, pkg, repoPath);
+    case "java-maven":
+    case "java-gradle":
+      return await detectJavaInternalDependencies(entrypoint, pkg, repoPath);
+    default:
+      return [];
+  }
+}
+
+async function generatePackageActions(
+  pkg: PackageInfo,
+  targetPath: string
+): Promise<RepositoryActions> {
+  const actions: RepositoryActions = {
+    build: [],
+    test: [],
+    deploy: [],
+    dev: [],
+    lint: [],
+    format: [],
+    install: [],
+    clean: [],
+    typecheck: [],
+  };
+
+  await addPackageActions(pkg, actions);
+  return actions;
+}
+
+async function generateScriptActions(
+  entrypoint: EntrypointScript,
+  pkg: PackageInfo,
+  targetPath: string
+): Promise<RepositoryActions> {
+  const actions: RepositoryActions = {
+    build: [],
+    test: [],
+    deploy: [],
+    dev: [],
+    lint: [],
+    format: [],
+    install: [],
+    clean: [],
+    typecheck: [],
+  };
+
+  // Generate language-specific script actions
+  switch (pkg.type) {
+    case "python":
+      await addPythonScriptActions(entrypoint, actions, targetPath);
+      break;
+    case "node":
+      await addNodeScriptActions(entrypoint, actions, targetPath);
+      break;
+    case "go":
+      await addGoScriptActions(entrypoint, actions, targetPath);
+      break;
+    case "rust":
+      await addRustScriptActions(entrypoint, actions, targetPath);
+      break;
+    case "java-maven":
+    case "java-gradle":
+      await addJavaScriptActions(entrypoint, actions, targetPath);
+      break;
+    default:
+      break;
+  }
+
+  return actions;
+}
+
+async function addPythonScriptActions(
+  entrypoint: EntrypointScript,
+  actions: RepositoryActions,
+  targetPath: string
+): Promise<void> {
+  const scriptPath = entrypoint.relativePath;
+
+  // Run action - execute the Python script
+  actions.dev.push({
+    command: `python ${scriptPath}`,
+  });
+
+  // Test action - try to run pytest on the script if it looks like a test
+  if (entrypoint.name.includes("test") || entrypoint.name.startsWith("test_")) {
+    actions.test.push({
+      command: `python -m pytest ${scriptPath}`,
+    });
+  } else {
+    // For non-test scripts, add a basic validation run
+    actions.test.push({
+      command: `python -m py_compile ${scriptPath}`,
+    });
+  }
+
+  // Install dependencies if requirements.txt exists in the target path
+  actions.install.push({
+    command: "pip install -r requirements.txt",
+  });
+
+  // Lint action
+  actions.lint.push({
+    command: `python -m flake8 ${scriptPath}`,
+  });
+
+  // Format action
+  actions.format.push({
+    command: `python -m black ${scriptPath}`,
+  });
+
+  // Deploy action - leave empty for now
+}
+
+// Stub functions for other languages - to be implemented later
+async function addNodeScriptActions(
+  entrypoint: EntrypointScript,
+  actions: RepositoryActions,
+  targetPath: string
+): Promise<void> {
+  const scriptPath = entrypoint.relativePath;
+
+  // TODO: Implement Node.js script actions
+  actions.dev.push({
+    command: `node ${scriptPath}`,
+  });
+
+  // Deploy action - leave empty for now
+}
+
+async function addGoScriptActions(
+  entrypoint: EntrypointScript,
+  actions: RepositoryActions,
+  targetPath: string
+): Promise<void> {
+  const scriptPath = entrypoint.relativePath;
+
+  // TODO: Implement Go script actions
+  actions.dev.push({
+    command: `go run ${scriptPath}`,
+  });
+
+  // Deploy action - leave empty for now
+}
+
+async function addRustScriptActions(
+  entrypoint: EntrypointScript,
+  actions: RepositoryActions,
+  targetPath: string
+): Promise<void> {
+  // TODO: Implement Rust script actions
+  // Deploy action - leave empty for now
+}
+
+async function addJavaScriptActions(
+  entrypoint: EntrypointScript,
+  actions: RepositoryActions,
+  targetPath: string
+): Promise<void> {
+  // TODO: Implement Java script actions
+  // Deploy action - leave empty for now
+}
+
+async function detectPythonInternalDependencies(
+  entrypoint: EntrypointScript,
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<string[]> {
+  const internalDeps: string[] = [];
+
+  try {
+    const content = await fs.readFile(entrypoint.path, "utf-8");
+    const imports = parsePythonImports(content);
+
+    for (const importModule of imports) {
+      const internalPath = await resolveInternalPythonModule(
+        importModule,
+        entrypoint.path,
+        repoPath
+      );
+
+      if (internalPath) {
+        internalDeps.push(internalPath);
+      }
+    }
+  } catch (error) {
+    console.debug(
+      `Error detecting internal dependencies for ${entrypoint.path}: ${error}`
+    );
+  }
+
+  return Array.from(new Set(internalDeps)); // Remove duplicates
+}
+
+function parsePythonImports(content: string): string[] {
+  const imports: string[] = [];
+  const lines = content.split("\n");
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Skip comments and empty lines
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    // Parse "import module" statements
+    const importMatch = trimmed.match(/^import\s+([a-zA-Z_][a-zA-Z0-9_.]*)/);
+    if (importMatch) {
+      imports.push(importMatch[1]);
+      continue;
+    }
+
+    // Parse "from module import ..." statements
+    const fromImportMatch = trimmed.match(
+      /^from\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s+import/
+    );
+    if (fromImportMatch) {
+      imports.push(fromImportMatch[1]);
+      continue;
+    }
+
+    // Handle relative imports "from .module import ..." or "from ..module import ..."
+    const relativeImportMatch = trimmed.match(
+      /^from\s+(\.{1,}[a-zA-Z_][a-zA-Z0-9_.]*)\s+import/
+    );
+    if (relativeImportMatch) {
+      imports.push(relativeImportMatch[1]);
+      continue;
+    }
+  }
+
+  return imports;
+}
+
+async function resolveInternalPythonModule(
+  moduleName: string,
+  scriptPath: string,
+  repoPath: string
+): Promise<string | null> {
+  // Handle relative imports
+  if (moduleName.startsWith(".")) {
+    const scriptDir = path.dirname(scriptPath);
+    const relativePath = resolveRelativePythonImport(
+      moduleName,
+      scriptDir,
+      repoPath
+    );
+    return relativePath;
+  }
+
+  // Check if it's an internal module by looking for corresponding files
+  const possiblePaths = [
+    // Look for module.py in current directory and parent directories
+    path.join(path.dirname(scriptPath), `${moduleName}.py`),
+    path.join(repoPath, `${moduleName}.py`),
+    // Look for module/__init__.py
+    path.join(path.dirname(scriptPath), moduleName, "__init__.py"),
+    path.join(repoPath, moduleName, "__init__.py"),
+    // Look for nested modules (e.g., package.module -> package/module.py)
+    ...moduleName.split(".").reduce((paths: string[], part, index, parts) => {
+      const subPath = parts.slice(0, index + 1).join("/");
+      paths.push(
+        path.join(path.dirname(scriptPath), `${subPath}.py`),
+        path.join(repoPath, `${subPath}.py`),
+        path.join(path.dirname(scriptPath), subPath, "__init__.py"),
+        path.join(repoPath, subPath, "__init__.py")
+      );
+      return paths;
+    }, []),
+  ];
+
+  for (const possiblePath of possiblePaths) {
+    try {
+      await fs.access(possiblePath);
+      const relativePath = path.relative(repoPath, possiblePath);
+      return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
+    } catch {
+      // File doesn't exist, continue
+    }
+  }
+
+  return null; // Not an internal module
+}
+
+function resolveRelativePythonImport(
+  relativePath: string,
+  scriptDir: string,
+  repoPath: string
+): string | null {
+  const dots = relativePath.match(/^\.+/)?.[0] || "";
+  const modulePart = relativePath.substring(dots.length);
+
+  let targetDir = scriptDir;
+
+  // Navigate up directories based on number of dots
+  for (let i = 1; i < dots.length; i++) {
+    targetDir = path.dirname(targetDir);
+    if (targetDir === path.dirname(targetDir)) break; // Reached filesystem root
+  }
+
+  if (modulePart) {
+    const possiblePaths = [
+      path.join(targetDir, `${modulePart}.py`),
+      path.join(targetDir, modulePart, "__init__.py"),
+    ];
+
+    for (const possiblePath of possiblePaths) {
+      try {
+        if (possiblePath.startsWith(repoPath)) {
+          const relativePath = path.relative(repoPath, possiblePath);
+          return relativePath.startsWith(".")
+            ? relativePath
+            : `./${relativePath}`;
+        }
+      } catch {
+        // Continue
+      }
+    }
+  }
+
+  return null;
+}
+
+// Stub functions for internal dependency detection in other languages
+async function detectNodeInternalDependencies(
+  entrypoint: EntrypointScript,
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<string[]> {
+  // TODO: Implement Node.js internal dependency detection
+  // Could parse require() and import statements for relative paths
+  return [];
+}
+
+async function detectGoInternalDependencies(
+  entrypoint: EntrypointScript,
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<string[]> {
+  // TODO: Implement Go internal dependency detection
+  // Could parse import statements for internal module references
+  return [];
+}
+
+async function detectRustInternalDependencies(
+  entrypoint: EntrypointScript,
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<string[]> {
+  // TODO: Implement Rust internal dependency detection
+  // Could parse mod and use statements for internal crate references
+  return [];
+}
+
+async function detectJavaInternalDependencies(
+  entrypoint: EntrypointScript,
+  pkg: PackageInfo,
+  repoPath: string
+): Promise<string[]> {
+  // TODO: Implement Java internal dependency detection
+  // Could parse import statements for internal package references
+  return [];
 }
 
 async function detectDependencyFiles(
@@ -881,84 +1467,54 @@ async function parsePackageDependencies(pkg: PackageInfo): Promise<{
   }
 }
 
-async function buildRepositoryActionsFromPackages(
-  repoPath: string,
-  packages: PackageInfo[],
-  context: Partial<ProjectContext>
-): Promise<RepositoryActions> {
-  const actions: RepositoryActions = {
-    build: [],
-    test: [],
-    deploy: [],
-    dev: [],
-    lint: [],
-    format: [],
-    install: [],
-    clean: [],
-    typecheck: [],
-  };
-
-  // Add actions for each package
-  for (const pkg of packages) {
-    await addPackageActions(pkg, actions);
-  }
-
-  return actions;
-}
-
 async function addPackageActions(
   packageInfo: PackageInfo,
   actions: RepositoryActions
 ): Promise<void> {
-  const isRoot =
-    packageInfo.relativePath === "." || packageInfo.relativePath === "";
-  const scope = isRoot ? "root" : packageInfo.relativePath;
   switch (packageInfo.type) {
     case "node":
-      await addNodePackageActions(packageInfo, actions, scope);
+      await addNodePackageActions(packageInfo, actions);
       break;
 
     case "python":
-      await addPythonPackageActions(packageInfo, actions, scope);
+      await addPythonPackageActions(packageInfo, actions);
       break;
 
     case "go":
-      await addGoPackageActions(packageInfo, actions, scope);
+      await addGoPackageActions(packageInfo, actions);
       break;
 
     case "rust":
-      await addRustPackageActions(packageInfo, actions, scope);
+      await addRustPackageActions(packageInfo, actions);
       break;
 
     case "java-maven":
-      await addMavenPackageActions(packageInfo, actions, scope);
+      await addMavenPackageActions(packageInfo, actions);
       break;
 
     case "java-gradle":
-      await addGradlePackageActions(packageInfo, actions, scope);
+      await addGradlePackageActions(packageInfo, actions);
       break;
 
     case "php":
-      await addPhpPackageActions(packageInfo, actions, scope);
+      await addPhpPackageActions(packageInfo, actions);
       break;
 
     case "ruby":
-      await addRubyPackageActions(packageInfo, actions, scope);
+      await addRubyPackageActions(packageInfo, actions);
       break;
   }
 }
 
 async function addNodePackageActions(
   packageInfo: PackageInfo,
-  actions: RepositoryActions,
-  scope: string
+  actions: RepositoryActions
 ): Promise<void> {
   const packageManager = packageInfo.packageManager || "npm";
 
   // Add install action
   actions.install.push({
     command: getInstallCommand(packageManager),
-    scope,
   });
 
   try {
@@ -993,7 +1549,6 @@ async function addNodePackageActions(
         ) {
           actions[actionType].push({
             command: `${getRunCommand(packageManager)} ${scriptName}`,
-            scope,
           });
         }
       }
@@ -1001,7 +1556,6 @@ async function addNodePackageActions(
     if (packageInfo.language === "typescript") {
       actions.typecheck.push({
         command: "npx tsc --noEmit",
-        scope,
       });
     }
   } catch {
@@ -1011,8 +1565,7 @@ async function addNodePackageActions(
 
 async function addPythonPackageActions(
   packageInfo: PackageInfo,
-  actions: RepositoryActions,
-  scope: string
+  actions: RepositoryActions
 ): Promise<void> {
   // Check for different Python package files
   const hasRequirements = await fileExists(
@@ -1028,147 +1581,121 @@ async function addPythonPackageActions(
   if (hasRequirements) {
     actions.install.push({
       command: "pip install -r requirements.txt",
-      scope,
     });
   }
 
   if (hasPipfile) {
     actions.install.push({
       command: "pipenv install",
-      scope,
     });
   }
 
   // Test actions
   actions.test.push({
     command: "python -m pytest",
-    scope,
   });
 
   // Build actions
   if (hasSetupPy) {
     actions.build.push({
       command: "python setup.py build",
-      scope,
     });
   }
 
   if (hasPyprojectToml) {
     actions.build.push({
       command: "python -m build",
-      scope,
     });
   }
 }
 
 async function addGoPackageActions(
   packageInfo: PackageInfo,
-  actions: RepositoryActions,
-  scope: string
+  actions: RepositoryActions
 ): Promise<void> {
   actions.install.push({
     command: "go mod download",
-    scope,
   });
 
   actions.build.push({
     command: "go build ./...",
-    scope,
   });
 
   actions.test.push({
     command: "go test ./...",
-    scope,
   });
 }
 
 async function addRustPackageActions(
   packageInfo: PackageInfo,
-  actions: RepositoryActions,
-  scope: string
+  actions: RepositoryActions
 ): Promise<void> {
   actions.install.push({
     command: "cargo fetch",
-    scope,
   });
 
   actions.build.push({
     command: "cargo build",
-    scope,
   });
 
   actions.test.push({
     command: "cargo test",
-    scope,
   });
 }
 
 async function addMavenPackageActions(
   packageInfo: PackageInfo,
-  actions: RepositoryActions,
-  scope: string
+  actions: RepositoryActions
 ): Promise<void> {
   actions.install.push({
     command: "mvn install",
-    scope,
   });
 
   actions.build.push({
     command: "mvn compile",
-    scope,
   });
 
   actions.test.push({
     command: "mvn test",
-    scope,
   });
 }
 
 async function addGradlePackageActions(
   packageInfo: PackageInfo,
-  actions: RepositoryActions,
-  scope: string
+  actions: RepositoryActions
 ): Promise<void> {
   actions.build.push({
     command: "./gradlew build",
-    scope,
   });
 
   actions.test.push({
     command: "./gradlew test",
-    scope,
   });
 }
 
 async function addPhpPackageActions(
   packageInfo: PackageInfo,
-  actions: RepositoryActions,
-  scope: string
+  actions: RepositoryActions
 ): Promise<void> {
   actions.install.push({
     command: "composer install",
-    scope,
   });
 
   actions.test.push({
     command: "composer test",
-    scope,
   });
 }
 
 async function addRubyPackageActions(
   packageInfo: PackageInfo,
-  actions: RepositoryActions,
-  scope: string
+  actions: RepositoryActions
 ): Promise<void> {
   actions.install.push({
     command: "bundle install",
-    scope,
   });
 
   actions.test.push({
     command: "bundle exec rspec",
-    scope,
   });
 }
 
