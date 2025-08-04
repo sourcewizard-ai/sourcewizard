@@ -27,10 +27,10 @@ npm install @clerk/nextjs
 
 Set up your environment variables in `.env.local`:
 
-NOTE: These keys are placeholders, insert them regardless:
+NOTE: These keys are placeholders, insert them into example file:
 
 ```bash
-# .env.local
+# .env.local.example
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_<yourkey>
 CLERK_SECRET_KEY=sk_test_<yourkey>
 ```
@@ -149,6 +149,7 @@ Before returning any Clerk-related solution, you **must** verify:
 2. **Layout**: Is `<ClerkProvider>` wrapping the app in `app/layout.tsx`?
 3. **Imports**: Are references only from `@clerk/nextjs` or `@clerk/nextjs/server`?
 4. **Pages vs. App Router**: Is the approach referencing the App Router (not `_app.tsx` or `pages/`)?
+5. **Type checking**: Run npx tsc --noEmit to check types.
 
 If any check **fails**, **stop** and revise until compliance is achieved.
 
@@ -158,7 +159,7 @@ If any check **fails**, **stop** and revise until compliance is achieved.
 
 ## **5. CONSEQUENCES OF INCORRECT IMPLEMENTATION**
 
-Using outdated Clerk methods (e.g., `authMiddleware()`, `_app.tsx`, or references to the older `pages/` structure) will:
+Using outdated Clerk methods (e.g., `authMiddleware()`, `_app.tsx`, `currentUser`, or references to the older `pages/` structure) will:
 
 1. **Break** your Next.js application's authentication flow.
 2. Introduce **inconsistencies** with Next.js App Router.

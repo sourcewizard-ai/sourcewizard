@@ -257,11 +257,10 @@ export function createGetBulkTargetDataTool(
       "Get bulk target data including dependencies and environment variables for specified targets",
     parameters: z.object({
       targetNames: z
-        .array(z.string())
+        .union([z.array(z.string()), z.string()])
         .describe(
-          "List of target names to analyze (available targets: " +
-            Object.keys(repositoryTargets).join(", ") +
-            ")"
+          "List of target names to analyze (can be an array or string representation). Available targets: " +
+            Object.keys(repositoryTargets).join(", ")
         ),
       repoPath: z
         .string()
@@ -270,6 +269,34 @@ export function createGetBulkTargetDataTool(
     }),
     execute: async ({ targetNames, repoPath }) => {
       try {
+        // Handle case where targetNames might be passed as a string representation of an array
+        let processedTargetNames: string[];
+        if (typeof targetNames === "string") {
+          // Try to parse string representations like "[:sample-app]" or "[\"sample-app\"]"
+          const cleanString = targetNames.trim();
+          if (cleanString.startsWith("[") && cleanString.endsWith("]")) {
+            try {
+              // Remove brackets and split by comma, then clean each item
+              const innerContent = cleanString.slice(1, -1);
+              if (innerContent.startsWith(":")) {
+                // Handle special case like "[:sample-app]"
+                processedTargetNames = [innerContent.slice(1)];
+              } else {
+                // Handle standard JSON array format
+                processedTargetNames = JSON.parse(cleanString);
+              }
+            } catch {
+              // If parsing fails, treat as single item
+              processedTargetNames = [cleanString];
+            }
+          } else {
+            // Single string value
+            processedTargetNames = [cleanString];
+          }
+        } else {
+          processedTargetNames = targetNames;
+        }
+
         const resolvedRepoPath = repoPath ? path.resolve(cwd, repoPath) : cwd;
 
         // Filter repository targets by requested names
@@ -277,7 +304,7 @@ export function createGetBulkTargetDataTool(
         const availableTargetNames = Object.keys(repositoryTargets);
         const invalidTargets: string[] = [];
 
-        for (const targetName of targetNames) {
+        for (const targetName of processedTargetNames) {
           if (repositoryTargets[targetName]) {
             requestedTargets[targetName] = repositoryTargets[targetName];
           } else {
@@ -346,6 +373,17 @@ export function createFileOperationTools(
       repositoryTargets
     );
   }
+
+  return tools;
+}
+
+export function createSearchTools(
+  cwd: string,
+  repositoryTargets: Record<string, TargetInfo>
+) {
+  const tools: any = {
+    get_bulk_target_data: createGetBulkTargetDataTool(cwd, repositoryTargets),
+  };
 
   return tools;
 }

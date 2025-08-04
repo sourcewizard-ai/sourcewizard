@@ -21,6 +21,7 @@ export interface RepositoryActions {
 export interface ProjectContext {
   name: string;
   targets?: Record<string, TargetInfo>; // Map of "path:name" -> target info
+  target_dependencies?: BulkTargetData;
 }
 
 export interface TargetInfo {
@@ -48,6 +49,14 @@ export interface TargetInfo {
   internal_dependencies?: string[]; // Internal project dependencies (relative paths to modules/packages)
   actions: RepositoryActions; // Target-specific actions
 }
+export type BulkTargetData = Record<
+  string,
+  {
+    dependencies: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    envNames: string[];
+  }
+>;
 
 // Common directories to ignore even if not in .gitignore
 const DEFAULT_IGNORE_PATTERNS = [
@@ -2072,16 +2081,7 @@ function getRunCommand(packageManager: string): string {
 export async function getBulkTargetData(
   targets: Record<string, TargetInfo>,
   repoPath: string
-): Promise<
-  Record<
-    string,
-    {
-      dependencies: Record<string, string>;
-      devDependencies?: Record<string, string>;
-      envNames: string[];
-    }
-  >
-> {
+): Promise<BulkTargetData> {
   const result: Record<
     string,
     {

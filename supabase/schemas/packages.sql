@@ -43,6 +43,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION name_description(packages)
+RETURNS TEXT AS $$
+ SELECT $1.name || ' ' || $1.description;
+$$ LANGUAGE SQL IMMUTABLE;
+
 -- Trigger to automatically update updated_at on row updates
 CREATE TRIGGER trigger_packages_updated_at
     BEFORE UPDATE ON packages

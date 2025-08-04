@@ -3,7 +3,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { CLIAuth } from "../shared/cli-web-auth/index.js";
-import { renderInstall } from "./install.jsx";
+import { renderInstall, renderMCPStatus } from "./install.jsx";
 import { supabase } from "../shared/supabase-client.js";
 import { install, search } from "./agent.js";
 import { detectRepo } from "../shared/install-agent/repository-detector.js";
@@ -65,7 +65,23 @@ export class MCPPackageCLI {
         "relevance"
       )
       .action(async (query, path, options) => {
-        search(query, path || process.cwd());
+        // Get JWT token from current session
+        let jwt: string | undefined;
+        try {
+          const tokens = await this.cliAuth.getStatus();
+          if (tokens.isAuthenticated) {
+            // Get the actual JWT token from token storage
+            const tokenStorage = (this.cliAuth as any).tokenStorage;
+            const storedTokens = await tokenStorage.getTokens();
+            jwt = storedTokens?.accessToken;
+          }
+        } catch (error) {
+          console.log(
+            chalk.yellow("Warning: Not authenticated, using fallback API key")
+          );
+        }
+
+        search(query, path || process.cwd(), jwt);
       });
 
     this.program
@@ -85,8 +101,43 @@ export class MCPPackageCLI {
       .description("Install a package or code snippet with AI guidance")
       .argument("[name]", "Package or snippet name to install")
       .action(async (name: string | undefined, options: any) => {
-        renderInstall(name);
+        // Get JWT token from current session
+        let jwt: string | undefined;
+        try {
+          const tokens = await this.cliAuth.getStatus();
+          if (tokens.isAuthenticated) {
+            // Get the actual JWT token from token storage
+            const tokenStorage = (this.cliAuth as any).tokenStorage;
+            const storedTokens = await tokenStorage.getTokens();
+            jwt = storedTokens?.accessToken;
+          }
+        } catch (error) {
+          console.log(
+            chalk.yellow("Warning: Not authenticated, using fallback API key")
+          );
+        }
+
+        renderInstall(name, jwt);
         // install(name, process.cwd());
+      });
+
+    // Status command - watch MCP installation progress
+    this.program
+      .command("status")
+      .alias("st")
+      .description("Watch installation progress from MCP server")
+      .action(async () => {
+        renderMCPStatus("", undefined); // No package name needed, just watch status
+      });
+
+    // MCP command
+    this.program
+      .command("mcp")
+      .description("Start SourceWizard as an MCP server")
+      .action(async () => {
+        // Import and start the MCP server
+        const { main } = await import("../mcp/server.js");
+        await main();
       });
   }
 

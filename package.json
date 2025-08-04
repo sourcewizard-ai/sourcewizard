@@ -11,6 +11,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/cli/index.ts",
+    "mcp": "tsx src/mcp/server.ts",
     "ink-ui": "node --loader ts-node/esm src/cli/ink-ui-cli.ts",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -32,6 +33,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
     "@inkjs/ui": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.1.0",
     "@supabase/supabase-js": "^2.52.0",
     "@typeconf/sdk": "^0.3.2",
     "@types/commander": "^2.12.0",

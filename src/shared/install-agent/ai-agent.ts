@@ -1,12 +1,13 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { CoreMessage, generateText } from "ai";
-import { createFileOperationTools } from "./ai-tools.js";
-import { ProjectContext } from "./repository-detector.js";
+import { createFileOperationTools, createSearchTools } from "./ai-tools.js";
+import { getBulkTargetData, ProjectContext } from "./repository-detector.js";
 import { readRelevantFiles } from "./file-utils.js";
 
 export interface AgentOptions {
   serverUrl: string;
-  apiKey: string;
+  apiKey?: string;
+  jwt?: string;
   cwd: string;
   projectContext: ProjectContext;
   onStepFinish?: (stepData: any) => void;
@@ -24,7 +25,8 @@ export class AIAgent {
   private projectContext: ProjectContext;
   private cwd: string;
   private serverUrl: string;
-  private apiKey: string;
+  private apiKey?: string;
+  private jwt?: string;
   private onStepFinish?: (stepData: any) => void;
 
   constructor(options: AgentOptions) {
@@ -33,14 +35,25 @@ export class AIAgent {
     this.onStepFinish = options.onStepFinish;
     this.serverUrl = options.serverUrl;
     this.apiKey = options.apiKey;
+    this.jwt = options.jwt;
+    if (!this.apiKey && !this.jwt) {
+      throw new Error("API key or JWT token is required");
+    }
   }
 
   private async getConfig(packageName: string) {
+    let authHeaders = {};
+    if (this.apiKey) {
+      authHeaders["x-api-key"] = this.apiKey;
+    }
+    if (this.jwt) {
+      authHeaders["Authorization"] = `Bearer ${this.jwt}`;
+    }
     const response = await fetch(`${this.serverUrl}/api/agent/config`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": this.apiKey,
+        ...authHeaders,
       },
       body: JSON.stringify({
         package_name: packageName,
@@ -56,36 +69,26 @@ export class AIAgent {
       baseURL: this.serverUrl + "/api/agent",
     });
 
-    const tools = createFileOperationTools(
-      this.cwd,
-      this.projectContext.targets
+    const bulkTargetData = await getBulkTargetData(
+      this.projectContext.targets,
+      this.cwd
     );
+
+    this.projectContext.target_dependencies = bulkTargetData;
 
     const prompt = {
       operation: "search",
       search_query: query,
       project_context: this.projectContext,
     };
-    console.log("Prompt", prompt);
+    // console.log("Prompt", prompt);
 
     const result = await generateText({
       // this is ignored on the server side
       //model: anthropic("claude-4-sonnet-20250514"),
       model: anthropic("claude-3-5-sonnet-20240620"),
-      maxSteps: 5,
       prompt: JSON.stringify(prompt),
-      onStepFinish:
-        this.onStepFinish ||
-        (({ text, toolCalls, toolResults, finishReason, usage }) => {
-          console.log("Step finished:", {
-            text,
-            toolCalls,
-            toolResults,
-            finishReason,
-            usage,
-          });
-        }),
-      tools,
+      onStepFinish: this.onStepFinish,
     });
 
     return {
