@@ -52,13 +52,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "install_package",
-        description: "Install and configure a package with AI-guided setup",
+        description: "Install and configure a package with AI-guided setup. IMPORTANT: Always call search_packages first to clarify the exact package name before installation. This ensures you're installing the correct package and helps avoid typos or ambiguity in package names.",
         inputSchema: {
           type: "object",
           properties: {
             packageName: {
               type: "string",
-              description: "Name of the package to install",
+              description: "Name of the package to install (should be verified using search_packages first)",
             },
             cwd: {
               type: "string",

@@ -61,31 +61,36 @@ describe("Repository Actions Detection", () => {
     const result = await detectRepo("/test/path");
 
     expect(result.name).toBe("path");
-    expect(result.actions).toBeDefined();
+    expect(result.targets).toBeDefined();
+
+    // Get the first target (should be the package itself)
+    const targets = Object.values(result.targets!);
+    expect(targets.length).toBeGreaterThan(0);
+    const target = targets[0];
 
     // Check that build actions are detected
-    expect(result.actions.build).toBeDefined();
-    expect(result.actions.build.length).toBeGreaterThan(0);
-    expect(result.actions.build[0].command).toContain("build");
+    expect(target.actions.build).toBeDefined();
+    expect(target.actions.build.length).toBeGreaterThan(0);
+    expect(target.actions.build[0].command).toContain("build");
 
     // Check that test actions are detected
-    expect(result.actions.test).toBeDefined();
-    expect(result.actions.test.length).toBeGreaterThan(0);
-    expect(result.actions.test[0].command).toContain("test");
+    expect(target.actions.test).toBeDefined();
+    expect(target.actions.test.length).toBeGreaterThan(0);
+    expect(target.actions.test[0].command).toContain("test");
 
     // Check that dev actions are detected
-    expect(result.actions.dev).toBeDefined();
-    expect(result.actions.dev.length).toBeGreaterThan(0);
-    expect(result.actions.dev[0].command).toContain("dev");
+    expect(target.actions.dev).toBeDefined();
+    expect(target.actions.dev.length).toBeGreaterThan(0);
+    expect(target.actions.dev[0].command).toContain("dev");
 
     // Check that lint actions are detected
-    expect(result.actions.lint).toBeDefined();
-    expect(result.actions.lint.length).toBeGreaterThan(0);
-    expect(result.actions.lint[0].command).toContain("lint");
+    expect(target.actions.lint).toBeDefined();
+    expect(target.actions.lint.length).toBeGreaterThan(0);
+    expect(target.actions.lint[0].command).toContain("lint");
 
     // Check install actions are always present
-    expect(result.actions.install).toBeDefined();
-    expect(result.actions.install.length).toBeGreaterThan(0);
+    expect(target.actions.install).toBeDefined();
+    expect(target.actions.install.length).toBeGreaterThan(0);
   });
 
   test("should detect Python repository actions", async () => {
@@ -101,19 +106,24 @@ describe("Repository Actions Detection", () => {
 
     const result = await detectRepo("/test/python-path");
 
-    expect(result.actions).toBeDefined();
+    expect(result.targets).toBeDefined();
+
+    // Get the first target (should be the Python package)
+    const targets = Object.values(result.targets!);
+    expect(targets.length).toBeGreaterThan(0);
+    const target = targets[0];
 
     // Check that Python-specific actions are detected
-    expect(result.actions.install).toBeDefined();
+    expect(target.actions.install).toBeDefined();
     expect(
-      result.actions.install.some((action) =>
+      target.actions.install.some((action) =>
         action.command.includes("pip install")
       )
     ).toBe(true);
 
-    expect(result.actions.test).toBeDefined();
+    expect(target.actions.test).toBeDefined();
     expect(
-      result.actions.test.some((action) => action.command.includes("pytest"))
+      target.actions.test.some((action) => action.command.includes("pytest"))
     ).toBe(true);
   });
 
@@ -157,10 +167,15 @@ describe("Repository Actions Detection", () => {
     const result = await detectRepo("/test/monorepo");
 
     expect(result.name).toBe("monorepo");
-    expect(result.actions).toBeDefined();
+    expect(result.targets).toBeDefined();
+
+    // Get the first target (should be the root package)
+    const targets = Object.values(result.targets!);
+    expect(targets.length).toBeGreaterThan(0);
+    const target = targets[0];
 
     // Check that root actions are present
-    expect(result.actions.build.length).toBeGreaterThanOrEqual(1);
-    expect(result.actions.install.length).toBeGreaterThanOrEqual(1);
+    expect(target.actions.build.length).toBeGreaterThanOrEqual(1);
+    expect(target.actions.install.length).toBeGreaterThanOrEqual(1);
   });
 });

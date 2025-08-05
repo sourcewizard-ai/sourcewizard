@@ -1,12 +1,17 @@
 {
   "name": "sourcewizard",
-  "version": "1.0.0",
-  "description": "SourceWizard - Intelligent package and code snippet management with AI-powered guidance",
+  "version": "0.1.0",
+  "description": "SourceWizard - AI-powered setup wizard for dev tools and libraries with MCP integration",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "sourcewizard": "dist/src/cli/index.js"
   },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
@@ -23,13 +28,23 @@
     "sourcewizard",
     "package-manager",
     "ai",
+    "agent",
     "cli",
     "terminal-ui",
     "code-snippets",
     "developer-tools"
   ],
-  "author": "",
-  "license": "MIT",
+  "author": "Ivan Chebykin <ivan@chebykin.org>",
+  "license": "Apache-2.0",
+  "homepage": "https://sourcewizard.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sourcewizard-ai/sourcewizard.git",
+    "directory": "sourcewizard"
+  },
+  "bugs": {
+    "url": "https://github.com/sourcewizard-ai/sourcewizard/issues"
+  },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
     "@inkjs/ui": "^2.0.0",

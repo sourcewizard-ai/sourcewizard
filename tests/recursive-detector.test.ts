@@ -163,15 +163,18 @@ describe("Recursive Repository Detection", () => {
     expect(sharedTarget!.language).toBe("rust");
 
     // Check that actions are generated for all packages
-    expect(result.actions.build.length).toBeGreaterThan(1);
-    expect(result.actions.test.length).toBeGreaterThan(1);
-    expect(result.actions.install.length).toBeGreaterThan(1);
+    const allTargets = Object.values(result.targets!);
+    const allBuildActions = allTargets.flatMap(target => target.actions.build);
+    const allTestActions = allTargets.flatMap(target => target.actions.test);
+    const allInstallActions = allTargets.flatMap(target => target.actions.install);
+    
+    expect(allBuildActions.length).toBeGreaterThan(1);
+    expect(allTestActions.length).toBeGreaterThan(1);
+    expect(allInstallActions.length).toBeGreaterThan(1);
 
-    // Verify different scopes are present
-    const scopes = result.actions.build.map((action) => action.scope);
-    expect(scopes).toContain("root");
-    expect(scopes).toContain("packages/frontend");
-    expect(scopes).toContain("services/auth");
+    // Verify that targets have their own actions
+    expect(frontendTarget!.actions.build.length).toBeGreaterThan(0);
+    expect(backendTarget!.actions.build.length).toBeGreaterThan(0);
   });
 
   test("should respect gitignore patterns", async () => {
@@ -284,7 +287,9 @@ describe("Recursive Repository Detection", () => {
     expect(cliTarget!.language).toBe("python");
 
     // Should have Python-specific actions
-    const pythonActions = result.actions.test.filter((action) =>
+    const allTargets = Object.values(result.targets!);
+    const allTestActions = allTargets.flatMap(target => target.actions.test);
+    const pythonActions = allTestActions.filter((action) =>
       action.command.includes("pytest")
     );
     expect(pythonActions.length).toBeGreaterThan(0);

@@ -1,35 +1,167 @@
 # SourceWizard
 
-[Website](https://sourcewizard.ai)
+[![Website](https://img.shields.io/badge/Website-sourcewizard.ai-blue)](https://sourcewizard.ai)
+[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/@sourcewizard/sourcewizard)](https://www.npmjs.com/package/@sourcewizard/sourcewizard)
 
-A terminal-based setup wizard for devtools and MCP for searching package and enriching context with up to date documentation.
+AI-powered setup wizard for dev tools and libraries with MCP (Model Context Protocol) integration.
 
 ## Demo
 
 [![asciicast](https://asciinema.org/a/PxMHEwWtK6oUbvHYjjyVymfvr.svg)](https://asciinema.org/a/PxMHEwWtK6oUbvHYjjyVymfvr)
 
+## Overview
+
+SourceWizard is an intelligent assistant that helps developers quickly find, install, and configure packages and development tools. It combines AI-powered search capabilities with automated installation and setup processes.
+
 ## Features
 
-- MCP context improvement: SourceWizard adds up to date documentation to your prompt and automatically detect if you are missing a library or tool. No hallucinated or deprecated API calls.
-- Agentic AI installer: LLM that follows custom setup prompts provided for multple packages.
-- CLI: nice looking terminal UI that shows you the progress of installation.
+- **MCP Integration**: Adds up-to-date documentation to your prompts and automatically detects missing libraries or tools. No hallucinated or deprecated API calls.
+- **AI-Powered Package Search**: Find packages and code snippets using natural language queries
+- **Agentic AI Installer**: LLM that follows custom setup prompts for multiple packages with intelligent configuration
+- **Beautiful Terminal UI**: Clean, progress-tracking interface that shows installation status in real-time
+- **Multi-Platform Support**: Works across different package managers and project types
 
-### Development
+## Installation
+
+```bash
+npm install -g @sourcewizard/sourcewizard
+```
+
+## Usage
+
+### CLI Commands
+
+```bash
+# Search for packages
+sourcewizard search "react testing library"
+
+# Install a package with AI guidance
+sourcewizard install <package-name>
+
+# Start mcp
+sourcewizard mcp
+
+# Check status of MCP installation
+sourcewizard status
+```
+
+### MCP Integration
+
+SourceWizard can be used as an MCP server with Claude Code or other MCP clients:
+
+```bash
+# Start MCP server
+npm run mcp
+```
+
+Available MCP tools:
+- `search_packages`: Search for packages and code snippets using AI-powered analysis
+- `install_package`: Install and configure packages with AI guidance
+
+**Important**: Always call `search_packages` first to clarify the exact package name before using `install_package`.
+
+#### MCP Configuration
+
+Add this to your MCP settings file (e.g., `~/.config/claude-code/mcp_settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "sourcewizard": {
+      "command": "npx",
+      "args": ["sourcewizard", "mcp"],
+      "env": {
+        "SOURCEWIZARD_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
+```
+
+Get your API key at [sourcewizard.ai/dashboard](https://sourcewizard.ai/dashboard).
+
+## Environment Variables
+
+- `SOURCEWIZARD_API_KEY`: Required for AI-powered features. [Get your API key here](https://sourcewizard.ai/dashboard)
+- `SOURCEWIZARD_SERVER_URL`: Custom server URL (defaults to production server)
+
+## Development
 
 ```bash
 # Install dependencies
 npm install
 
-# Run the CLI
-npm run dev -- install <package>
+# Run in development mode
+npm run dev
+
+# Build the project
+npm run build
+
+# Run tests
+npm test
+
+# Run MCP server in development
+npm run mcp
 ```
 
-### Adding a new package
+#### Local Development MCP Configuration
 
-Packages are located at `registry/` directory. You can copy the existing one and update the fields.
+For development, add this to your MCP settings file to use the local version:
 
-When you're happy with the prompt, before pushing the commit please run this command to generate the package config JSON:
-
+```json
+{
+  "mcpServers": {
+    "sourcewizard-dev": {
+      "command": "npx",
+      "args": ["tsx", "path/to/sourcewizard/src/mcp/server.ts"],
+      "env": {
+        "SOURCEWIZARD_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
 ```
+
+Replace `path/to/sourcewizard` with the actual path to your sourcewizard directory.
+
+### Adding a New Package
+
+Packages are located in the `registry/` directory. To add a new package:
+
+1. Copy an existing package directory and update the fields
+2. Edit the package configuration in `pkg.config.ts`
+3. Create installation instructions in `INSTALL.md`
+4. Generate the package config JSON:
+
+```bash
 npx @typeconf/typeconf build registry
 ```
+
+## Scripts
+
+- `npm run build` - Build TypeScript to JavaScript
+- `npm run dev` - Run CLI in development mode
+- `npm run mcp` - Start MCP server
+- `npm test` - Run test suite
+- `npm run import-registry` - Import registry configurations
+
+## Contributing
+
+Contributions are welcome! Please feel free to:
+
+- Submit bug reports and feature requests via [GitHub Issues](https://github.com/sourcewizard-ai/sourcewizard/issues)
+- Contribute new package configurations to the registry
+- Improve documentation and examples
+- Submit pull requests for bug fixes and improvements
+
+## License
+
+Apache-2.0 - see [LICENSE](LICENSE) for details.
+
+## Links
+
+- [Website](https://sourcewizard.ai)
+- [GitHub Repository](https://github.com/sourcewizard-ai/sourcewizard)
+- [Issues](https://github.com/sourcewizard-ai/sourcewizard/issues)
+- [npm Package](https://www.npmjs.com/package/@sourcewizard/sourcewizard)
