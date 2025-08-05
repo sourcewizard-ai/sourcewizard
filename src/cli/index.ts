@@ -3,7 +3,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { CLIAuth } from "../shared/cli-web-auth/index.js";
-import { renderInstall, renderMCPStatus } from "./install.jsx";
+import { renderInstall, renderMCPStatus } from "./install";
 import { supabase } from "../shared/supabase-client.js";
 import { install, search } from "./agent.js";
 import { detectRepo } from "../shared/install-agent/repository-detector.js";
@@ -76,9 +76,24 @@ export class MCPPackageCLI {
             jwt = storedTokens?.accessToken;
           }
         } catch (error) {
-          console.log(
-            chalk.yellow("Warning: Not authenticated, using fallback API key")
-          );
+          // Authentication failed - will check for API key below
+        }
+
+        // Check if we have either JWT or API key
+        const hasApiKey = !!process.env.SOURCEWIZARD_API_KEY;
+        
+        if (!jwt && !hasApiKey) {
+          console.log(chalk.red("❌ Authentication required"));
+          console.log(chalk.yellow("You need to either:"));
+          console.log(chalk.gray("  1. Login with: ") + chalk.white("sourcewizard login"));
+          console.log(chalk.gray("  2. Set SOURCEWIZARD_API_KEY environment variable"));
+          console.log("");
+          console.log(chalk.gray("Get your API key at: https://sourcewizard.ai/dashboard"));
+          process.exit(1);
+        }
+
+        if (!jwt && hasApiKey) {
+          console.log(chalk.yellow("Using API key authentication"));
         }
 
         search(query, path || process.cwd(), jwt);
@@ -112,9 +127,24 @@ export class MCPPackageCLI {
             jwt = storedTokens?.accessToken;
           }
         } catch (error) {
-          console.log(
-            chalk.yellow("Warning: Not authenticated, using fallback API key")
-          );
+          // Authentication failed - will check for API key below
+        }
+
+        // Check if we have either JWT or API key
+        const hasApiKey = !!process.env.SOURCEWIZARD_API_KEY;
+        
+        if (!jwt && !hasApiKey) {
+          console.log(chalk.red("❌ Authentication required"));
+          console.log(chalk.yellow("You need to either:"));
+          console.log(chalk.gray("  1. Login with: ") + chalk.white("sourcewizard login"));
+          console.log(chalk.gray("  2. Set SOURCEWIZARD_API_KEY environment variable"));
+          console.log("");
+          console.log(chalk.gray("Get your API key at: https://sourcewizard.ai/dashboard"));
+          process.exit(1);
+        }
+
+        if (!jwt && hasApiKey) {
+          console.log(chalk.yellow("Using API key authentication"));
         }
 
         renderInstall(name, jwt);
@@ -216,8 +246,6 @@ export class MCPPackageCLI {
   }
 }
 
-// Run CLI if this file is executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const cli = new MCPPackageCLI();
-  cli.run();
-}
+// Run CLI - this file is always the entry point when used as a binary
+const cli = new MCPPackageCLI();
+cli.run();

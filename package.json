@@ -1,6 +1,6 @@
 {
   "name": "sourcewizard",
-  "version": "0.1.1",
+  "version": "0.1.4",
   "description": "SourceWizard - AI-powered setup wizard for dev tools and libraries with MCP integration",
   "type": "module",
   "main": "dist/index.js",
@@ -13,9 +13,9 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/fix-imports.js",
     "start": "node dist/index.js",
-    "dev": "tsx src/cli/index.ts",
+    "dev": "NODE_ENV=development tsx src/cli/index.ts",
     "mcp": "tsx src/mcp/server.ts",
     "ink-ui": "node --loader ts-node/esm src/cli/ink-ui-cli.ts",
     "test": "jest",
@@ -47,6 +47,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
+    "@clerk/clerk-sdk-node": "^5.0.60",
     "@inkjs/ui": "^2.0.0",
     "@modelcontextprotocol/sdk": "^1.1.0",
     "@supabase/supabase-js": "^2.52.0",
@@ -90,6 +91,7 @@
     "@types/react": "^19.1.8",
     "jest": "^30.0.4",
     "ts-jest": "^29.4.0",
+    "tsc-alias": "^1.8.16",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   }

@@ -1,10 +1,12 @@
 import { detectRepo } from "../shared/install-agent/repository-detector.js";
 import { AIAgent } from "../shared/install-agent/ai-agent.js";
 import { ProgressServer } from "./progress-server.js";
+import { Logger } from "../shared/logger.js";
 
 export async function search(query: string, path: string, jwt?: string) {
   const repo = await detectRepo(path);
 
+  console.log(jwt);
   const agent = new AIAgent({
     cwd: path,
     projectContext: repo,
@@ -53,6 +55,17 @@ export async function install(
     return result;
   } catch (error) {
     console.error("Error during installation:", error);
+    
+    // Log the installation error with detailed context
+    Logger.logInstallationError(name, error, {
+      path,
+      jwt: !!jwt,
+      repo: repo.name || 'unknown',
+      serverUrl: process.env.SOURCEWIZARD_SERVER_URL || (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sourcewizard.ai"),
+      hasApiKey: !!process.env.SOURCEWIZARD_API_KEY,
+      stage: "agent_execution"
+    });
+    
     throw error;
   }
 }
@@ -96,6 +109,10 @@ export async function watchMCPStatus(onStepFinish: (step: any) => void) {
 
         if (progress.error) {
           console.log("Installation completed with error:", progress.error);
+          Logger.logError("MCP installation completed with error", progress.error, {
+            progressPort,
+            stage: "mcp_monitoring"
+          });
           isComplete = true;
         }
 
@@ -108,6 +125,11 @@ export async function watchMCPStatus(onStepFinish: (step: any) => void) {
           fetchError instanceof Error &&
           fetchError.message.includes("fetch")
         ) {
+          Logger.logError("MCP server not running", fetchError, {
+            progressPort,
+            stage: "mcp_connection"
+          });
+          
           onStepFinish({
             text: "MCP server not running. Please start it with 'sourcewizard mcp' first.",
             finishReason: "stop",
@@ -119,6 +141,11 @@ export async function watchMCPStatus(onStepFinish: (step: any) => void) {
             "MCP server not running. Please start it with 'sourcewizard mcp' first."
           );
         }
+        
+        Logger.logError("MCP status monitoring error", fetchError, {
+          progressPort,
+          stage: "mcp_monitoring"
+        });
         throw fetchError;
       }
     }
@@ -127,6 +154,10 @@ export async function watchMCPStatus(onStepFinish: (step: any) => void) {
     return { success: true };
   } catch (error) {
     console.error("Error monitoring MCP status:", error);
+    Logger.logError("MCP status monitoring failed", error, {
+      progressPort,
+      stage: "mcp_monitoring_overall"
+    });
     throw error;
   }
 }

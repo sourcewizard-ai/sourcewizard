@@ -64,9 +64,20 @@ export class AIAgent {
   }
 
   async searchPackages(query: string): Promise<AgentResult> {
+    let authHeaders = {};
+    if (this.apiKey) {
+      authHeaders["x-api-key"] = this.apiKey;
+    }
+    if (this.jwt) {
+      authHeaders["Authorization"] = `Bearer ${this.jwt}`;
+    }
+    console.log(this.serverUrl);
     const anthropic = createAnthropic({
-      apiKey: this.apiKey,
+      apiKey: this.apiKey || '',
       baseURL: this.serverUrl + "/api/agent",
+      headers: {
+        ...authHeaders,
+      },
     });
 
     const bulkTargetData = await getBulkTargetData(
@@ -113,9 +124,19 @@ export class AIAgent {
       );
     }
 
+    let authHeaders = {};
+    if (this.apiKey) {
+      authHeaders["x-api-key"] = this.apiKey;
+    }
+    if (this.jwt) {
+      authHeaders["Authorization"] = `Bearer ${this.jwt}`;
+    }
     const anthropic = createAnthropic({
-      apiKey: this.apiKey,
+      apiKey: this.apiKey || '',
       baseURL: this.serverUrl + "/api/agent",
+      headers: {
+        ...authHeaders,
+      },
     });
 
     const tools = createFileOperationTools(

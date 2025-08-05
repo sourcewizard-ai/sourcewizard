@@ -6,6 +6,7 @@ import Link from "ink-link";
 import { ProgressBar } from "./components/ui/ProgressBar";
 import { Input } from "./components/ui/Input";
 import { install, watchMCPStatus } from "./agent";
+import { Logger } from "../shared/logger.js";
 
 interface AppProps {
   packageName: string;
@@ -90,6 +91,7 @@ const App: React.FC<AppProps> = ({
                   setIsComplete(true);
                   setProgress(100);
                   setStage("Installation complete!");
+                  Logger.logInstallationSuccess(packageName, { jwt: !!jwt, finishReason, usage });
                 }
               },
               jwt
@@ -98,6 +100,14 @@ const App: React.FC<AppProps> = ({
         } catch (error) {
           setStage("Installation failed");
           setIsComplete(true);
+          
+          // Log the installation error with context
+          Logger.logInstallationError(packageName, error, {
+            jwt: !!jwt,
+            useMCP,
+            cwd: process.cwd(),
+            stage: "installation"
+          });
         }
       })();
     }

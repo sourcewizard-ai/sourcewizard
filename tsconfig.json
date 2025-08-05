@@ -12,7 +12,8 @@
     "isolatedModules": true,
     "incremental": true,
     "outDir": "./dist",
-    "jsx": "preserve",
+    "jsx": "react-jsx",
+    "verbatimModuleSyntax": false,
     "paths": {
       "@/*": ["./*"]
     }
