@@ -6,7 +6,6 @@ import { Logger } from "../shared/logger.js";
 export async function search(query: string, path: string, jwt?: string) {
   const repo = await detectRepo(path);
 
-  console.log(jwt);
   const agent = new AIAgent({
     cwd: path,
     projectContext: repo,
@@ -55,7 +54,7 @@ export async function install(
     return result;
   } catch (error) {
     console.error("Error during installation:", error);
-    
+
     // Log the installation error with detailed context
     Logger.logInstallationError(name, error, {
       path,
@@ -65,7 +64,7 @@ export async function install(
       hasApiKey: !!process.env.SOURCEWIZARD_API_KEY,
       stage: "agent_execution"
     });
-    
+
     throw error;
   }
 }
@@ -129,7 +128,7 @@ export async function watchMCPStatus(onStepFinish: (step: any) => void) {
             progressPort,
             stage: "mcp_connection"
           });
-          
+
           onStepFinish({
             text: "MCP server not running. Please start it with 'sourcewizard mcp' first.",
             finishReason: "stop",
@@ -141,7 +140,7 @@ export async function watchMCPStatus(onStepFinish: (step: any) => void) {
             "MCP server not running. Please start it with 'sourcewizard mcp' first."
           );
         }
-        
+
         Logger.logError("MCP status monitoring error", fetchError, {
           progressPort,
           stage: "mcp_monitoring"

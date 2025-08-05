@@ -1,6 +1,6 @@
 {
   "name": "sourcewizard",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "SourceWizard - AI-powered setup wizard for dev tools and libraries with MCP integration",
   "type": "module",
   "main": "dist/index.js",

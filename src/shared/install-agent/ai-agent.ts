@@ -71,7 +71,6 @@ export class AIAgent {
     if (this.jwt) {
       authHeaders["Authorization"] = `Bearer ${this.jwt}`;
     }
-    console.log(this.serverUrl);
     const anthropic = createAnthropic({
       apiKey: this.apiKey || '',
       baseURL: this.serverUrl + "/api/agent",
