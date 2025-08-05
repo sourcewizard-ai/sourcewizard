@@ -2,7 +2,7 @@
 
 [![Website](https://img.shields.io/badge/Website-sourcewizard.ai-blue)](https://sourcewizard.ai)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/@sourcewizard/sourcewizard)](https://www.npmjs.com/package/@sourcewizard/sourcewizard)
+[![npm version](https://img.shields.io/npm/v/sourcewizard)](https://www.npmjs.com/package/sourcewizard)
 
 AI-powered setup wizard for dev tools and libraries with MCP (Model Context Protocol) integration.
 
