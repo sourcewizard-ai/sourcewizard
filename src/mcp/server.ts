@@ -91,7 +91,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const agent = new AIAgent({
       cwd: cwd as string,
       projectContext,
-      serverUrl: process.env.SOURCEWIZARD_SERVER_URL || "http://localhost:3000",
+      serverUrl: process.env.SOURCEWIZARD_SERVER_URL || (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sourcewizard.ai"),
       apiKey,
       onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
         // Report granular progress from AI agent steps

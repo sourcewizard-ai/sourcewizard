@@ -8,7 +8,7 @@ export async function search(query: string, path: string, jwt?: string) {
   const agent = new AIAgent({
     cwd: path,
     projectContext: repo,
-    serverUrl: "http://localhost:3000",
+    serverUrl: process.env.SOURCEWIZARD_SERVER_URL || (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sourcewizard.ai"),
     jwt: jwt,
     apiKey: process.env.SOURCEWIZARD_API_KEY,
   });
@@ -30,7 +30,7 @@ export async function install(
   const agent = new AIAgent({
     cwd: path,
     projectContext: repo,
-    serverUrl: "http://localhost:3000",
+    serverUrl: process.env.SOURCEWIZARD_SERVER_URL || (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sourcewizard.ai"),
     jwt: jwt,
     apiKey: process.env.SOURCEWIZARD_API_KEY,
     onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {

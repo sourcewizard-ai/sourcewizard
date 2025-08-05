@@ -84,7 +84,7 @@ Get your API key at [sourcewizard.ai/dashboard](https://sourcewizard.ai/dashboar
 ## Environment Variables
 
 - `SOURCEWIZARD_API_KEY`: Required for AI-powered features. [Get your API key here](https://sourcewizard.ai/dashboard)
-- `SOURCEWIZARD_SERVER_URL`: Custom server URL (defaults to production server)
+- `SOURCEWIZARD_SERVER_URL`: Custom server URL (defaults to `http://localhost:3000` in development, `https://sourcewizard.ai` in production)
 
 ## Development
 
