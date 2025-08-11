@@ -1,7 +1,6 @@
 import fs from "fs";
 import type { PackageConfig } from "../types/all.js";
 import path from "path";
-import { fileURLToPath } from "url";
 
 const config: PackageConfig = {
   name: "clerk",

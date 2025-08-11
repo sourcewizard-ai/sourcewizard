@@ -1,7 +1,7 @@
 import {
   TokenStorage,
   StoredTokens,
-} from "../src/shared/cli-web-auth/token-storage.js";
+} from "../lib/cli-web-auth/token-storage.js";
 import path from "path";
 import os from "os";
 

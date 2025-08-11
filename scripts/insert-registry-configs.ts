@@ -4,7 +4,7 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
 import { glob } from "glob";
-import { supabase } from "../src/shared/supabase-client.js";
+import { supabase } from "../lib/supabase-client.js";
 
 interface RegistryConfig {
   name: string;
@@ -40,6 +40,7 @@ interface PackageInsert {
   };
   relevant_files_pattern: string[];
   language: string;
+  staging?: boolean;
 }
 
 async function getSessionInfo(): Promise<{
@@ -123,7 +124,8 @@ async function readRegistryConfigs(
 
 function mapConfigToPackage(
   config: RegistryConfig,
-  userId: string
+  userId: string,
+  staging: boolean = false
 ): PackageInsert {
   return {
     user_id: userId,
@@ -137,6 +139,7 @@ function mapConfigToPackage(
     },
     relevant_files_pattern: config.relevant_files_pattern || [],
     language: config.language,
+    staging,
   };
 }
 
@@ -211,6 +214,7 @@ async function main() {
     args.find((arg) => arg.startsWith("--registry-path="))?.split("=")[1] ||
     "registry/out";
   const dryRun = args.includes("--dry-run");
+  const staging = args.includes("--staging");
 
   // Get user info from session
   const sessionInfo = await getSessionInfo();
@@ -223,6 +227,7 @@ async function main() {
       "  --registry-path=<path>     Path to registry directory (default: registry/out)"
     );
     console.log("  --dry-run                  Preview what would be inserted");
+    console.log("  --staging                  Mark packages as staging");
     console.log("\n💡 Examples:");
     console.log("  tsx scripts/insert-registry-configs.ts");
     console.log("  tsx scripts/insert-registry-configs.ts --dry-run");
@@ -240,6 +245,7 @@ async function main() {
   console.log(`👤 User: ${email}`);
   console.log(`📁 Registry Path: ${registryPath}`);
   console.log(`🧪 Dry Run: ${dryRun ? "Yes" : "No"}`);
+  console.log(`🚧 Staging: ${staging ? "Yes" : "No"}`);
   console.log("");
 
   try {
@@ -259,7 +265,7 @@ async function main() {
   }
 
   // Map configs to package format
-  const packages = configs.map((config) => mapConfigToPackage(config, userId));
+  const packages = configs.map((config) => mapConfigToPackage(config, userId, staging));
 
   console.log(
     `📦 Processing ${packages.length} packages: ${packages

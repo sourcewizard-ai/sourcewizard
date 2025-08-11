@@ -4,6 +4,9 @@ import { createFileOperationTools, createSearchTools } from "./ai-tools.js";
 import { getBulkTargetData, ProjectContext } from "./repository-detector.js";
 import { readRelevantFiles } from "./file-utils.js";
 
+export type AgentAuthJWT = string;
+export type AgentAuthAPIKey = string;
+
 export interface AgentOptions {
   serverUrl: string;
   apiKey?: string;
@@ -144,7 +147,7 @@ export class AIAgent {
     );
 
     const prompt = {
-      operation: "install",
+      operation: "integrate",
       package_name: packageName,
       relevant_files: relevantFiles,
       project_context: this.projectContext,

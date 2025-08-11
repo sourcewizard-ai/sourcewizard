@@ -2,11 +2,13 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import { CLIAuth } from "../shared/cli-web-auth/index.js";
+import { CLIAuth } from "../lib/cli-web-auth/index.js";
 import { renderInstall, renderMCPStatus } from "./install";
-import { supabase } from "../shared/supabase-client.js";
+import { supabase } from "../lib/supabase-client.js";
 import { install, search } from "./agent.js";
-import { detectRepo } from "../shared/install-agent/repository-detector.js";
+import { detectRepo, executeRepositoryCommand, ExecuteCommandOptions } from "../install-agent/repository-detector.js";
+import path from "path";
+import fs from "fs";
 
 export class MCPPackageCLI {
   private program: Command;
@@ -81,7 +83,7 @@ export class MCPPackageCLI {
 
         // Check if we have either JWT or API key
         const hasApiKey = !!process.env.SOURCEWIZARD_API_KEY;
-        
+
         if (!jwt && !hasApiKey) {
           console.log(chalk.red("❌ Authentication required"));
           console.log(chalk.yellow("You need to either:"));
@@ -132,7 +134,7 @@ export class MCPPackageCLI {
 
         // Check if we have either JWT or API key
         const hasApiKey = !!process.env.SOURCEWIZARD_API_KEY;
-        
+
         if (!jwt && !hasApiKey) {
           console.log(chalk.red("❌ Authentication required"));
           console.log(chalk.yellow("You need to either:"));
@@ -168,6 +170,57 @@ export class MCPPackageCLI {
         // Import and start the MCP server
         const { main } = await import("../mcp/server.js");
         await main();
+      });
+
+    // Build command
+    this.program
+      .command("build")
+      .description("Build the project using repository detection")
+      .argument("[target]", "Target to build (defaults to root target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .action(async (target, options) => {
+        await this.handleRepositoryCommand("build", target, options.path);
+      });
+
+    // Dev command  
+    this.program
+      .command("dev")
+      .description("Start development server using repository detection")
+      .argument("[target]", "Target to run in dev mode (defaults to root target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .action(async (target, options) => {
+        await this.handleRepositoryCommand("dev", target, options.path);
+      });
+
+    // Check command
+    this.program
+      .command("check")
+      .description("Run type/lint checks using repository detection")
+      .argument("[target]", "Target to check (defaults to root target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .action(async (target, options) => {
+        await this.handleRepositoryCommand("check", target, options.path);
+      });
+
+    // Test command
+    this.program
+      .command("test")
+      .description("Run tests using repository detection")
+      .argument("[target]", "Target to test (defaults to current directory target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .action(async (target, options) => {
+        await this.handleRepositoryCommand("test", target, options.path);
+      });
+
+    // Run command - alias to dev
+    this.program
+      .command("run")
+      .alias("r")
+      .description("Run any package.json script for the target (alias for dev)")
+      .argument("[target]", "Target to run (defaults to current directory target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .action(async (target, options) => {
+        await this.handleRepositoryCommand("dev", target, options.path);
       });
   }
 
@@ -229,6 +282,89 @@ export class MCPPackageCLI {
       process.exit(1);
     }
   }
+
+  private findGitRepoRoot(startPath: string): string {
+    let currentPath = path.resolve(startPath);
+    const root = path.parse(currentPath).root;
+
+    while (currentPath !== root) {
+      const gitPath = path.join(currentPath, '.git');
+      if (fs.existsSync(gitPath)) {
+        return currentPath;
+      }
+      currentPath = path.dirname(currentPath);
+    }
+
+    // If no .git found, return the starting path
+    return path.resolve(startPath);
+  }
+
+  private async handleRepositoryCommand(
+    actionType: "build" | "dev" | "check" | "test", 
+    targetArg: string | undefined,
+    repoPath: string | undefined
+  ): Promise<void> {
+    try {
+      // Get JWT token from current session
+      let jwt: string | undefined;
+      try {
+        const tokens = await this.cliAuth.getStatus();
+        if (tokens.isAuthenticated) {
+          // Get the actual JWT token from token storage
+          const tokenStorage = (this.cliAuth as any).tokenStorage;
+          const storedTokens = await tokenStorage.getTokens();
+          jwt = storedTokens?.accessToken;
+        }
+      } catch (error) {
+        // Authentication failed - will check for API key below
+      }
+
+      // Check if we have either JWT or API key
+      const hasApiKey = !!process.env.SOURCEWIZARD_API_KEY;
+
+      if (!jwt && !hasApiKey) {
+        console.log(chalk.red("❌ Authentication required"));
+        console.log(chalk.yellow("You need to either:"));
+        console.log(chalk.gray("  1. Login with: ") + chalk.white("sourcewizard login"));
+        console.log(chalk.gray("  2. Set SOURCEWIZARD_API_KEY environment variable"));
+        console.log("");
+        console.log(chalk.gray("Get your API key at: https://sourcewizard.ai/dashboard"));
+        process.exit(1);
+      }
+
+      if (!jwt && hasApiKey) {
+        console.log(chalk.yellow("Using API key authentication"));
+      }
+
+      const workingDir = repoPath ? path.resolve(repoPath) : this.findGitRepoRoot(process.cwd());
+      
+      const options: ExecuteCommandOptions = {
+        onOutput: (message: string, type: 'info' | 'error' | 'success') => {
+          switch (type) {
+            case 'info':
+              console.log(chalk.blue(message));
+              break;
+            case 'success':
+              console.log(chalk.green(message));
+              break;
+            case 'error':
+              console.log(chalk.red(message));
+              break;
+          }
+        }
+      };
+      
+      await executeRepositoryCommand(actionType, targetArg, workingDir, options);
+      
+    } catch (error) {
+      console.error(
+        chalk.red(`❌ ${actionType} failed:`),
+        error instanceof Error ? error.message : String(error)
+      );
+      process.exit(1);
+    }
+  }
+
 
   async run(): Promise<void> {
     try {

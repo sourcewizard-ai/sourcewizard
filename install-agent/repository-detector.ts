@@ -1,5 +1,7 @@
 import { promises as fs } from "fs";
 import * as path from "path";
+import { spawn } from "child_process";
+import { act } from "react";
 
 export interface RepositoryAction {
   command: string;
@@ -14,7 +16,7 @@ export interface RepositoryActions {
   format: RepositoryAction[];
   install: RepositoryAction[];
   clean: RepositoryAction[];
-  typecheck: RepositoryAction[];
+  check: RepositoryAction[];
   [key: string]: RepositoryAction[];
 }
 
@@ -31,17 +33,17 @@ export interface TargetInfo {
   version?: string;
   framework?: string;
   package_manager?:
-    | "npm"
-    | "yarn"
-    | "pnpm"
-    | "bun"
-    | "pip"
-    | "cargo"
-    | "go"
-    | "maven"
-    | "gradle"
-    | "composer"
-    | "bundle";
+  | "npm"
+  | "yarn"
+  | "pnpm"
+  | "bun"
+  | "pip"
+  | "cargo"
+  | "go"
+  | "maven"
+  | "gradle"
+  | "composer"
+  | "bundle";
   dependency_files: string[]; // Full paths relative to repo root (e.g., "./package.json", "./frontend/package.json")
   env_files: string[]; // Full paths relative to repo root, includes inherited env files
   entrypoint?: string; // For script targets, the main script file
@@ -97,14 +99,14 @@ interface PackageInfo {
   path: string;
   relativePath: string;
   type:
-    | "node"
-    | "python"
-    | "go"
-    | "rust"
-    | "java-maven"
-    | "java-gradle"
-    | "php"
-    | "ruby";
+  | "node"
+  | "python"
+  | "go"
+  | "rust"
+  | "java-maven"
+  | "java-gradle"
+  | "php"
+  | "ruby";
   configFile: string;
   name?: string;
   language: string;
@@ -373,7 +375,12 @@ async function analyzePackageFile(
     switch (type) {
       case "node": {
         const content = await fs.readFile(filePath, "utf-8");
-        const packageJson = JSON.parse(content);
+        let packageJson;
+        try {
+          packageJson = JSON.parse(content);
+        } catch (parseError) {
+          throw new Error(`JSON syntax error in ${filePath}: ${parseError instanceof Error ? parseError.message : parseError}`);
+        }
         return {
           path: packagePath,
           relativePath: relativePath || "//",
@@ -504,7 +511,7 @@ async function analyzePackageFile(
         return null;
     }
   } catch (error) {
-    console.debug(`Error analyzing package file ${filePath}: ${error}`);
+    console.error(`Error analyzing package file ${filePath}: ${error}`);
     return null;
   }
 }
@@ -720,9 +727,81 @@ async function convertPackagesToTargets(
         actions: scriptActions,
       };
     }
+
+    // Create additional targets for each package.json script (Node.js packages only)
+    if (pkg.type === "node") {
+      await addPackageScriptTargets(pkg, targetName, targetPath, isRoot, targets, packageActions);
+    }
   }
 
   return targets;
+}
+
+async function addPackageScriptTargets(
+  pkg: PackageInfo,
+  targetName: string,
+  targetPath: string,
+  isRoot: boolean,
+  targets: Record<string, TargetInfo>,
+  packageActions: RepositoryActions
+): Promise<void> {
+  try {
+    // Read package.json to get scripts
+    const packageJsonPath = path.join(pkg.path, "package.json");
+    const packageContent = await fs.readFile(packageJsonPath, "utf-8");
+    let packageJson;
+    try {
+      packageJson = JSON.parse(packageContent);
+    } catch (parseError) {
+      throw new Error(`JSON syntax error in ${packageJsonPath}: ${parseError instanceof Error ? parseError.message : parseError}`);
+    }
+
+    if (!packageJson.scripts) {
+      return; // No scripts to create targets for
+    }
+
+    // Create a target for each script
+    for (const [scriptName, scriptCode] of Object.entries(packageJson.scripts)) {
+      if (typeof scriptCode !== 'string') continue;
+
+      // Create script target key in format: <pkg-path>:<pkg-name>-<script-name>
+      const scriptTargetKey = isRoot
+        ? `:${targetName}-${scriptName}`
+        : `${targetPath}:${targetName}-${scriptName}`;
+
+      // Create script-specific actions that just run this one script
+      const packageManager = pkg.packageManager || "npm";
+      const runCommand = getRunCommand(packageManager);
+      const scriptCommand = `${runCommand} ${scriptName}`;
+
+      const scriptActions: RepositoryActions = {
+        build: [],
+        test: [],
+        deploy: [],
+        dev: [{ command: scriptCommand }],
+        lint: [],
+        format: [],
+        install: [],
+        clean: [],
+        check: [],
+      };
+
+      targets[scriptTargetKey] = {
+        name: `${targetName}-${scriptName}`,
+        path: targetPath,
+        language: pkg.language,
+        framework: pkg.framework,
+        package_manager: pkg.packageManager as TargetInfo["package_manager"],
+        dependency_files: [], // Script targets don't need dependency files
+        env_files: [], // Script targets don't need env files  
+        target_type: "script",
+        actions: scriptActions,
+      };
+    }
+  } catch (error) {
+    // Log errors reading package.json for script targets
+    console.error(`Could not read package.json for script targets at ${pkg.path}: ${error}`);
+  }
 }
 
 async function detectEntrypointScripts(
@@ -924,7 +1003,7 @@ async function generatePackageActions(
     format: [],
     install: [],
     clean: [],
-    typecheck: [],
+    check: [],
   };
 
   await addPackageActions(pkg, actions);
@@ -945,7 +1024,7 @@ async function generateScriptActions(
     format: [],
     install: [],
     clean: [],
-    typecheck: [],
+    check: [],
   };
 
   // Generate language-specific script actions
@@ -1468,7 +1547,7 @@ async function parsePackageDependencies(pkg: PackageInfo): Promise<{
         };
     }
   } catch (error) {
-    console.debug(`Error parsing dependencies for ${pkg.path}: ${error}`);
+    console.error(`Error parsing dependencies for ${pkg.path}: ${error}`);
     return {
       dependencies: {},
       devDependencies: {},
@@ -1563,7 +1642,7 @@ async function addNodePackageActions(
       }
     }
     if (packageInfo.language === "typescript") {
-      actions.typecheck.push({
+      actions.check.push({
         command: "npx tsc --noEmit",
       });
     }
@@ -2110,3 +2189,172 @@ export async function getBulkTargetData(
   await Promise.all(promises);
   return result;
 }
+
+export interface ExecuteCommandOptions {
+  onOutput?: (message: string, type: 'info' | 'error' | 'success') => void;
+}
+
+export async function executeRepositoryCommand(
+  actionType: "build" | "dev" | "run" | "check" | "test",
+  targetArg: string | undefined,
+  repoPath: string,
+  options: ExecuteCommandOptions = {}
+): Promise<void> {
+  const { onOutput = () => { } } = options;
+
+  try {
+    onOutput(`🔍 Analyzing repository at ${repoPath}`, 'info');
+
+    const repo = await detectRepo(repoPath);
+
+    if (!repo.targets || Object.keys(repo.targets).length === 0) {
+      throw new Error("No targets found in repository");
+    }
+
+    // Normalize current directory relative to repo root for smart target matching
+    const currentDir = process.cwd();
+    const normalizedCurrentPath = path.relative(repoPath, currentDir);
+    const currentPathForMatching = normalizedCurrentPath === "" ? "//" : normalizedCurrentPath;
+
+    // Determine target to use
+    let targetInfo: TargetInfo;
+    let targetKey: string;
+
+    if (targetArg) {
+      // Find target by name, key, or path variations
+      const matchingTarget = Object.entries(repo.targets).find(
+        ([key, target]) => {
+          // Exact key match
+          if (key === targetArg) return true;
+
+          // Exact name match
+          if (target.name === targetArg) return true;
+
+          // Handle // prefixed target paths
+          if (targetArg.startsWith("//")) {
+            const pathWithoutSlashes = targetArg.substring(2);
+            // Match against key without the leading colon for root targets
+            if (key.startsWith(":") && key.substring(1) === pathWithoutSlashes) return true;
+            // Match against full key
+            if (key === pathWithoutSlashes) return true;
+            // Match against path:name format
+            if (key === `${pathWithoutSlashes}:${target.name}`) return true;
+          }
+
+          // Handle relative path matching
+          if (target.path !== "//" && target.path === targetArg) return true;
+
+          // Handle relative target with colon prefix (e.g., ":sourcewizard" when in sourcewizard directory)
+          if (targetArg.startsWith(":")) {
+            const targetName = targetArg.substring(1);
+            // ONLY search in current directory - this is the key fix
+            if (target.path === currentPathForMatching && target.name === targetName) return true;
+            // No fallback to global search - path is implied to be current directory
+          }
+
+          return false;
+        }
+      );
+
+      if (!matchingTarget) {
+        const availableTargets = Object.entries(repo.targets)
+          .map(([key, target]) => `  ${key} (${target.name}) - path: ${target.path}`)
+          .join('\n');
+        throw new Error(`Target "${targetArg}" not found.\nCurrent path: ${currentPathForMatching}\nAvailable targets:\n${availableTargets}`);
+      }
+
+      [targetKey, targetInfo] = matchingTarget;
+    } else {
+      // Smart default target selection based on current directory
+      let defaultTarget: [string, TargetInfo] | undefined;
+
+      // First, try to find a target in the current directory
+      defaultTarget = Object.entries(repo.targets).find(([key, target]) =>
+        target.path === currentPathForMatching
+      );
+
+      // If not found, use root target
+      if (!defaultTarget) {
+        defaultTarget = Object.entries(repo.targets).find(([key]) => key.startsWith(":"));
+      }
+
+      // If still not found, use first available
+      if (!defaultTarget) {
+        defaultTarget = Object.entries(repo.targets)[0];
+      }
+
+      [targetKey, targetInfo] = defaultTarget;
+    }
+
+    onOutput(`📦 Using target: ${targetKey} (${targetInfo.name})`, 'info');
+
+    // Always run install first
+    onOutput("🔧 Running install actions...", 'info');
+    await executeActions(targetInfo.actions.install, targetInfo.path, repoPath, onOutput);
+
+    // Always run check actions before the main command
+    onOutput("✅ Running check actions...", 'info');
+    await executeActions(targetInfo.actions.check, targetInfo.path, repoPath, onOutput);
+
+    // Run the specific action type
+    if (actionType !== "check") {
+      onOutput(`🚀 Running ${actionType} actions...`, 'info');
+      await executeActions(targetInfo.actions[actionType], targetInfo.path, repoPath, onOutput);
+    }
+
+    onOutput(`✅ ${actionType} completed successfully!`, 'success');
+
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    onOutput(`❌ ${actionType} failed: ${message}`, 'error');
+    throw error;
+  }
+}
+
+async function executeActions(
+  actions: RepositoryAction[],
+  targetPath: string,
+  repoPath: string,
+  onOutput: (message: string, type: 'info' | 'error' | 'success') => void
+): Promise<void> {
+  if (actions.length === 0) {
+    onOutput("⚠️  No actions defined", 'info');
+    return;
+  }
+
+  for (const action of actions) {
+    onOutput(`  Running: ${action.command}`, 'info');
+
+    // Determine working directory - replace // with repo root
+    const workingDir = targetPath === "//"
+      ? repoPath
+      : path.join(repoPath, targetPath);
+
+    await executeCommand(action.command, workingDir);
+  }
+}
+
+async function executeCommand(command: string, cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const [cmd, ...args] = command.split(" ");
+
+    const child = spawn(cmd, args, {
+      cwd,
+      stdio: "inherit",
+      shell: true
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Command "${command}" exited with code ${code}`));
+      }
+    });
+
+    child.on("error", (error) => {
+      reject(new Error(`Failed to execute command "${command}": ${error.message}`));
+    });
+  });
+}
+

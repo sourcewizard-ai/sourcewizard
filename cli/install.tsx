@@ -5,8 +5,9 @@ import { Box, Text } from "ink";
 import Link from "ink-link";
 import { ProgressBar } from "./components/ui/ProgressBar";
 import { Input } from "./components/ui/Input";
-import { install, watchMCPStatus } from "./agent";
-import { Logger } from "../shared/logger.js";
+import { install, watchMCPStatus, listInstallations, DiscoveredInstallation } from "./agent";
+import { Logger } from "../lib/logger.js";
+import { InstallationSelection } from "./components/InstallationSelection.js";
 
 interface AppProps {
   packageName: string;
@@ -25,9 +26,51 @@ const App: React.FC<AppProps> = ({
   const [currentStep, setCurrentStep] = useState(0);
   const [maxSteps, setMaxSteps] = useState(10); // Default estimate
   const [isComplete, setIsComplete] = useState(false);
+  const [availableInstallations, setAvailableInstallations] = useState<DiscoveredInstallation[]>([]);
+  const [selectedInstallation, setSelectedInstallation] = useState<DiscoveredInstallation | null>(null);
+  const [showingSelection, setShowingSelection] = useState(false);
 
   useEffect(() => {
     if (stage === "start") {
+      (async () => {
+        if (useMCP) {
+          // First, discover available installations
+          try {
+            setStage("Discovering installations...");
+            const installations = await listInstallations();
+            setAvailableInstallations(installations);
+
+            if (installations.length === 0) {
+              setStage("No MCP installations found");
+              setIsComplete(true);
+              return;
+            } else if (installations.length === 1) {
+              // Only one installation, select it automatically
+              setSelectedInstallation(installations[0]);
+              setStage("monitoring");
+            } else {
+              // Multiple installations, show selection UI
+              setShowingSelection(true);
+              setStage("selection");
+            }
+          } catch (error) {
+            setStage("Failed to discover installations");
+            setIsComplete(true);
+            return;
+          }
+        } else {
+          // Initialize installation state
+          setProgress(0);
+          setCurrentStep(0);
+          setStage("monitoring");
+        }
+      })();
+    }
+  }, [stage]);
+
+  // Separate effect for monitoring once an installation is selected
+  useEffect(() => {
+    if (stage === "monitoring") {
       (async () => {
         if (useMCP) {
           // Initialize MCP monitoring state
@@ -39,10 +82,10 @@ const App: React.FC<AppProps> = ({
           setProgress(0);
           setCurrentStep(0);
         }
-        
+
         try {
           if (useMCP) {
-            // Watch MCP status instead of triggering installation
+            // Watch MCP status for the selected installation
             await watchMCPStatus(
               ({ text, toolCalls, toolResults, finishReason, usage }) => {
                 // Update stage text only
@@ -60,7 +103,8 @@ const App: React.FC<AppProps> = ({
                     setProgress(prev => Math.min(prev + 2, 90)); // Gradually increase up to 90%
                   }
                 }
-              }
+              },
+              selectedInstallation // Pass the selected installation
             );
           } else {
             await install(
@@ -100,20 +144,35 @@ const App: React.FC<AppProps> = ({
         } catch (error) {
           setStage("Installation failed");
           setIsComplete(true);
-          
+
           // Log the installation error with context
           Logger.logInstallationError(packageName, error, {
             jwt: !!jwt,
             useMCP,
             cwd: process.cwd(),
-            stage: "installation"
+            stage: useMCP ? "mcp_monitoring" : "installation"
           });
         }
       })();
     }
-  }, [stage]);
+  }, [stage, selectedInstallation]);
 
-  // Remove the old time-based progress tracking
+  const handleInstallationSelect = (installation: DiscoveredInstallation) => {
+    setSelectedInstallation(installation);
+    setShowingSelection(false);
+    setStage("monitoring");
+  };
+
+  const selectionStage = () => {
+    return (
+      <Box flexDirection="column" paddingLeft={2}>
+        <InstallationSelection
+          installations={availableInstallations}
+          onSelect={handleInstallationSelect}
+        />
+      </Box>
+    );
+  };
 
   const apiKeyStage = () => {
     return (
@@ -148,15 +207,17 @@ const App: React.FC<AppProps> = ({
         <Box paddingY={1}>
           <Text color="black" bold>
             {useMCP
-              ? "Watching MCP Status"
-              : `Installing Package: ${packageName}`}
+              ? `Installing: ${selectedInstallation?.displayName || "Installing package"}`
+              : `Installing: ${packageName}`}
           </Text>
         </Box>
         <Box flexDirection="column" paddingLeft={2}>
           <Box width={50} height={8} flexWrap="wrap" overflow="hidden">
             <Text color="black">
               {useMCP
-                ? "Monitoring installation progress from MCP server..."
+                ? selectedInstallation
+                  ? `Monitoring ${selectedInstallation.installationInfo.packageName} installation...`
+                  : "Monitoring installation progress from MCP server..."
                 : "Please sit back and relax while the agent integrates the package."}
             </Text>
             <Text color="black"> </Text>
@@ -164,7 +225,7 @@ const App: React.FC<AppProps> = ({
               Status: {stage} {packageName && `(${packageName})`}
             </Text>
             <Text color="black">
-              {useMCP 
+              {useMCP
                 ? (isComplete ? "Complete" : "In Progress...")
                 : `Step: ${currentStep} / ${maxSteps} ${isComplete ? "(Complete)" : ""}`
               }
@@ -184,7 +245,7 @@ const App: React.FC<AppProps> = ({
         </Box>
         <Box width="98%" flexDirection="column">
           {/* {apiKeyStage()} */}
-          {installStage(packageName)}
+          {showingSelection ? selectionStage() : installStage(packageName)}
         </Box>
       </Box>
     </AppLayout>

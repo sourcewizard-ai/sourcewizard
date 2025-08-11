@@ -26,7 +26,10 @@ export class CLIAuth {
    * Now includes automatic token refresh if tokens are expired
    */
   async initialize(): Promise<void> {
-    // This will automatically refresh tokens if they're expired
+    // First attempt to refresh tokens on startup
+    await this.tokenStorage.attemptStartupRefresh();
+    
+    // Then get tokens (which may have been refreshed)
     const tokens = await this.tokenStorage.getTokens();
 
     if (tokens) {
@@ -37,8 +40,9 @@ export class CLIAuth {
           refresh_token: tokens.refreshToken,
         });
       } catch (error) {
-        // If session restoration fails, clear invalid tokens
-        await this.tokenStorage.clearTokens();
+        // If session restoration fails, log the error but don't clear tokens immediately
+        // The user may still be able to use them for some operations
+        console.error("Failed to restore session:", error instanceof Error ? error.message : String(error));
       }
     }
   }
@@ -128,8 +132,7 @@ export class CLIAuth {
       } = await this.auth.getSession();
 
       if (error || !session) {
-        // Clear invalid tokens
-        await this.tokenStorage.clearTokens();
+        // Don't immediately clear tokens - they might be refreshable
         return { isAuthenticated: false };
       }
 
@@ -138,8 +141,8 @@ export class CLIAuth {
         user: storedUser,
       };
     } catch (error) {
-      // If verification fails, clear tokens and return unauthenticated
-      await this.tokenStorage.clearTokens();
+      // If verification fails, return unauthenticated but don't clear tokens
+      // The tokens might still be valid for API operations
       return { isAuthenticated: false };
     }
   }

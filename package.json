@@ -1,11 +1,11 @@
 {
   "name": "sourcewizard",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "SourceWizard - AI-powered setup wizard for dev tools and libraries with MCP integration",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "sourcewizard": "dist/src/cli/index.js"
+    "sourcewizard": "dist/cli/index.js"
   },
   "files": [
     "dist/",
@@ -15,14 +15,14 @@
   "scripts": {
     "build": "tsc && node scripts/fix-imports.js",
     "start": "node dist/index.js",
-    "dev": "NODE_ENV=development tsx src/cli/index.ts",
-    "mcp": "tsx src/mcp/server.ts",
-    "ink-ui": "node --loader ts-node/esm src/cli/ink-ui-cli.ts",
-    "test": "jest",
-    "test:watch": "jest --watch",
+    "dev": "NODE_ENV=development tsx cli/index.ts",
+    "mcp": "tsx mcp/server.ts",
+    "test": "jest --no-watch",
     "test:coverage": "jest --coverage",
-    "import-registry": "tsx scripts/insert-registry-configs.ts",
-    "import-registry:dry-run": "tsx scripts/insert-registry-configs.ts --dry-run"
+    "build-registry": "npx @typeconf/typeconf build registry",
+    "push-registry": "tsx scripts/insert-registry-configs.ts",
+    "push-registry:staging": "tsx scripts/insert-registry-configs.ts --staging",
+    "push-registry:dry-run": "tsx scripts/insert-registry-configs.ts --dry-run"
   },
   "keywords": [
     "sourcewizard",
@@ -47,7 +47,8 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
-    "@clerk/clerk-sdk-node": "^5.0.60",
+    "@ai-sdk/provider": "^2.0.0",
+    "@ai-sdk/provider-utils": "^3.0.1",
     "@inkjs/ui": "^2.0.0",
     "@modelcontextprotocol/sdk": "^1.1.0",
     "@supabase/supabase-js": "^2.52.0",

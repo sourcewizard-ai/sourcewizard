@@ -1,4 +1,4 @@
-import { detectRepo } from "../src/shared/install-agent/repository-detector";
+import { detectRepo } from "../install-agent/repository-detector";
 import { promises as fs } from "fs";
 import * as path from "path";
 
@@ -61,25 +61,25 @@ describe("Recursive Repository Detection", () => {
       const path = dirPath.toString();
       if (path === "/test/repo") {
         return Promise.resolve([
-          { name: ".gitignore", isDirectory: () => false },
-          { name: "package.json", isDirectory: () => false },
-          { name: "packages", isDirectory: () => true },
-          { name: "services", isDirectory: () => true },
-          { name: "libs", isDirectory: () => true },
-          { name: "node_modules", isDirectory: () => true }, // Should be ignored
+          { name: ".gitignore", isDirectory: () => false, isFile: () => true },
+          { name: "package.json", isDirectory: () => false, isFile: () => true },
+          { name: "packages", isDirectory: () => true, isFile: () => false },
+          { name: "services", isDirectory: () => true, isFile: () => false },
+          { name: "libs", isDirectory: () => true, isFile: () => false },
+          { name: "node_modules", isDirectory: () => true, isFile: () => false }, // Should be ignored
         ] as any);
       } else if (path === "/test/repo/packages") {
         return Promise.resolve([
-          { name: "frontend", isDirectory: () => true },
-          { name: "backend", isDirectory: () => true },
+          { name: "frontend", isDirectory: () => true, isFile: () => false },
+          { name: "backend", isDirectory: () => true, isFile: () => false },
         ] as any);
       } else if (path === "/test/repo/services") {
         return Promise.resolve([
-          { name: "auth", isDirectory: () => true },
+          { name: "auth", isDirectory: () => true, isFile: () => false },
         ] as any);
       } else if (path === "/test/repo/libs") {
         return Promise.resolve([
-          { name: "shared", isDirectory: () => true },
+          { name: "shared", isDirectory: () => true, isFile: () => false },
         ] as any);
       } else if (path === "/test/repo/node_modules") {
         return Promise.reject(new Error("Should not scan node_modules"));
@@ -167,7 +167,7 @@ describe("Recursive Repository Detection", () => {
     const allBuildActions = allTargets.flatMap(target => target.actions.build);
     const allTestActions = allTargets.flatMap(target => target.actions.test);
     const allInstallActions = allTargets.flatMap(target => target.actions.install);
-    
+
     expect(allBuildActions.length).toBeGreaterThan(1);
     expect(allTestActions.length).toBeGreaterThan(1);
     expect(allInstallActions.length).toBeGreaterThan(1);
@@ -183,15 +183,15 @@ describe("Recursive Repository Detection", () => {
       const path = dirPath.toString();
       if (path === "/test/repo") {
         return Promise.resolve([
-          { name: ".gitignore", isDirectory: () => false },
-          { name: "package.json", isDirectory: () => false },
-          { name: "src", isDirectory: () => true },
-          { name: "build", isDirectory: () => true }, // Should be ignored
-          { name: "node_modules", isDirectory: () => true }, // Should be ignored
+          { name: ".gitignore", isDirectory: () => false, isFile: () => true },
+          { name: "package.json", isDirectory: () => false, isFile: () => true },
+          { name: "src", isDirectory: () => true, isFile: () => false },
+          { name: "build", isDirectory: () => true, isFile: () => false }, // Should be ignored
+          { name: "node_modules", isDirectory: () => true, isFile: () => false }, // Should be ignored
         ] as any);
       } else if (path === "/test/repo/src") {
         return Promise.resolve([
-          { name: "package.json", isDirectory: () => false },
+          { name: "package.json", isDirectory: () => false, isFile: () => true },
         ] as any);
       }
       return Promise.resolve([] as any);
@@ -226,17 +226,17 @@ describe("Recursive Repository Detection", () => {
       const path = dirPath.toString();
       if (path === "/test/repo") {
         return Promise.resolve([
-          { name: "api", isDirectory: () => true },
-          { name: "cli", isDirectory: () => true },
+          { name: "api", isDirectory: () => true, isFile: () => false },
+          { name: "cli", isDirectory: () => true, isFile: () => false },
         ] as any);
       } else if (path === "/test/repo/api") {
         return Promise.resolve([
-          { name: "requirements.txt", isDirectory: () => false },
-          { name: "setup.py", isDirectory: () => false },
+          { name: "requirements.txt", isDirectory: () => false, isFile: () => true },
+          { name: "setup.py", isDirectory: () => false, isFile: () => true },
         ] as any);
       } else if (path === "/test/repo/cli") {
         return Promise.resolve([
-          { name: "pyproject.toml", isDirectory: () => false },
+          { name: "pyproject.toml", isDirectory: () => false, isFile: () => true },
         ] as any);
       }
       return Promise.resolve([] as any);
@@ -300,19 +300,19 @@ describe("Recursive Repository Detection", () => {
       const path = dirPath.toString();
       if (path === "/test/repo") {
         return Promise.resolve([
-          { name: "projects", isDirectory: () => true },
+          { name: "projects", isDirectory: () => true, isFile: () => false },
         ] as any);
       } else if (path === "/test/repo/projects") {
         return Promise.resolve([
-          { name: "team-a", isDirectory: () => true },
+          { name: "team-a", isDirectory: () => true, isFile: () => false },
         ] as any);
       } else if (path === "/test/repo/projects/team-a") {
         return Promise.resolve([
-          { name: "microservice", isDirectory: () => true },
+          { name: "microservice", isDirectory: () => true, isFile: () => false },
         ] as any);
       } else if (path === "/test/repo/projects/team-a/microservice") {
         return Promise.resolve([
-          { name: "go.mod", isDirectory: () => false },
+          { name: "go.mod", isDirectory: () => false, isFile: () => true },
         ] as any);
       }
       return Promise.resolve([] as any);

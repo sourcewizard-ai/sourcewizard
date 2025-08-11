@@ -1,4 +1,5 @@
 {
+  "registry/workos-authkit/pkg.config.ts": "PackageConfig",
   "registry/mailchimp/pkg.config.ts": "PackageConfig",
   "registry/clerk/pkg.config.ts": "PackageConfig"
 }

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS packages (
     metadata jsonb DEFAULT '{}',
     relevant_files_pattern text[] DEFAULT '{}',
     language text NOT NULL,
+    staging boolean DEFAULT false NOT NULL,
     created_at timestamptz DEFAULT now() NOT NULL,
     updated_at timestamptz DEFAULT now() NOT NULL,
     
@@ -28,6 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_packages_tags ON packages USING GIN(tags);
 CREATE INDEX IF NOT EXISTS idx_packages_metadata ON packages USING GIN(metadata);
 CREATE INDEX IF NOT EXISTS idx_packages_created_at ON packages(created_at);
 CREATE INDEX IF NOT EXISTS idx_packages_updated_at ON packages(updated_at);
+CREATE INDEX IF NOT EXISTS idx_packages_staging ON packages(staging);
 
 -- Create text search index for name and description
 CREATE INDEX IF NOT EXISTS idx_packages_search ON packages USING GIN(

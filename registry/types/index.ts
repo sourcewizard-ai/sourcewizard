@@ -4,3 +4,4 @@ import fs from 'fs';
 export * from './all' // Your config types
 export { default as clerkpkgConfig } from '../clerk/pkg.config'
 export { default as mailchimppkgConfig } from '../mailchimp/pkg.config'
+export { default as workosAuthkitpkgConfig } from '../workos-authkit/pkg.config'

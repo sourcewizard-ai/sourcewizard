@@ -16,12 +16,14 @@ export interface StoredTokens {
 export class TokenStorage {
   private configDir: string;
   private tokenFilePath: string;
+  private logsDir: string;
   private auth?: SupabaseAuthClient;
 
   constructor(configDir: string, authClient?: SupabaseAuthClient) {
     // Use standard config directories based on OS
     this.configDir = path.join(os.homedir(), ".config", configDir);
     this.tokenFilePath = path.join(this.configDir, "auth.json");
+    this.logsDir = path.join(this.configDir, "logs");
     this.auth = authClient;
   }
 
@@ -44,6 +46,33 @@ export class TokenStorage {
   }
 
   /**
+   * Ensure the logs directory exists
+   */
+  private async ensureLogsDir(): Promise<void> {
+    try {
+      await fs.access(this.logsDir);
+    } catch {
+      await fs.mkdir(this.logsDir, { recursive: true });
+    }
+  }
+
+  /**
+   * Log error to file in logs directory
+   */
+  private async logError(error: string): Promise<void> {
+    try {
+      await this.ensureLogsDir();
+      const timestamp = new Date().toISOString();
+      const logEntry = `[${timestamp}] Token refresh error: ${error}\n`;
+      const logFile = path.join(this.logsDir, "errors.log");
+      await fs.appendFile(logFile, logEntry);
+    } catch (logError) {
+      // Silent fail for logging errors to avoid infinite loops
+      console.error("Failed to write to log file:", logError);
+    }
+  }
+
+  /**
    * Store authentication tokens
    */
   async storeTokens(tokens: StoredTokens): Promise<void> {
@@ -60,6 +89,7 @@ export class TokenStorage {
     currentTokens: StoredTokens
   ): Promise<StoredTokens | null> {
     if (!this.auth) {
+      await this.logError("No auth client available for token refresh");
       return null;
     }
 
@@ -70,6 +100,8 @@ export class TokenStorage {
       });
 
       if (error || !data.session) {
+        const errorMessage = error ? error.message : "No session data returned";
+        await this.logError(`Token refresh failed: ${errorMessage}`);
         return null;
       }
 
@@ -91,7 +123,35 @@ export class TokenStorage {
 
       return refreshedTokens;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.logError(`Token refresh exception: ${errorMessage}`);
       return null;
+    }
+  }
+
+  /**
+   * Attempt to refresh tokens on startup - doesn't clear tokens on failure
+   */
+  async attemptStartupRefresh(): Promise<boolean> {
+    try {
+      const tokenData = await fs.readFile(this.tokenFilePath, "utf-8");
+      const tokens: StoredTokens = JSON.parse(tokenData);
+
+      // Check if tokens are expired or close to expiry
+      const now = Date.now();
+      const timeUntilExpiry = tokens.expiresAt - now;
+
+      // If tokens expire within 10 minutes, try to refresh them
+      if (timeUntilExpiry <= 10 * 60 * 1000) {
+        const refreshedTokens = await this.refreshTokens(tokens);
+        return refreshedTokens !== null;
+      }
+
+      return true; // Tokens are still valid
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.logError(`Failed to read tokens for startup refresh: ${errorMessage}`);
+      return false;
     }
   }
 
@@ -114,9 +174,10 @@ export class TokenStorage {
           return refreshedTokens;
         }
 
-        // If refresh failed, clear tokens and return null
-        await this.clearTokens();
-        return null;
+        // If refresh failed, return expired tokens but don't clear them
+        // Let the application decide what to do with expired tokens
+        await this.logError("Token refresh failed in getTokens, returning expired tokens");
+        return tokens;
       }
 
       return tokens;
