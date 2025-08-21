@@ -18,6 +18,7 @@ export class TokenStorage {
   private tokenFilePath: string;
   private logsDir: string;
   private auth?: SupabaseAuthClient;
+  private refreshPromise?: Promise<StoredTokens | null>;
 
   constructor(configDir: string, authClient?: SupabaseAuthClient) {
     // Use standard config directories based on OS
@@ -88,20 +89,50 @@ export class TokenStorage {
   private async refreshTokens(
     currentTokens: StoredTokens
   ): Promise<StoredTokens | null> {
+    // If a refresh is already in progress, wait for it
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
     if (!this.auth) {
       await this.logError("No auth client available for token refresh");
       return null;
     }
 
+    // Start the refresh and store the promise
+    this.refreshPromise = this.performRefresh(currentTokens);
+    
+    try {
+      const result = await this.refreshPromise;
+      return result;
+    } finally {
+      // Clear the promise after completion
+      this.refreshPromise = undefined;
+    }
+  }
+
+  /**
+   * Perform the actual token refresh
+   */
+  private async performRefresh(
+    currentTokens: StoredTokens
+  ): Promise<StoredTokens | null> {
     try {
       // Use Supabase's refresh session method
-      const { data, error } = await this.auth.refreshSession({
+      const { data, error } = await this.auth!.refreshSession({
         refresh_token: currentTokens.refreshToken,
       });
 
       if (error || !data.session) {
         const errorMessage = error ? error.message : "No session data returned";
         await this.logError(`Token refresh failed: ${errorMessage}`);
+        
+        // If refresh token is invalid, we should clear tokens to avoid repeated failed attempts
+        if (error && (error.message.includes('Invalid Refresh Token') || error.message.includes('Refresh Token Not Found'))) {
+          await this.logError("Invalid refresh token detected, clearing stored tokens");
+          await this.clearTokens();
+        }
+        
         return null;
       }
 
@@ -134,6 +165,14 @@ export class TokenStorage {
    */
   async attemptStartupRefresh(): Promise<boolean> {
     try {
+      // Check if tokens file exists first
+      try {
+        await fs.access(this.tokenFilePath);
+      } catch {
+        // Token file doesn't exist, no need to refresh
+        return false;
+      }
+
       const tokenData = await fs.readFile(this.tokenFilePath, "utf-8");
       const tokens: StoredTokens = JSON.parse(tokenData);
 
@@ -144,13 +183,21 @@ export class TokenStorage {
       // If tokens expire within 10 minutes, try to refresh them
       if (timeUntilExpiry <= 10 * 60 * 1000) {
         const refreshedTokens = await this.refreshTokens(tokens);
-        return refreshedTokens !== null;
+        if (refreshedTokens === null) {
+          // Refresh failed, but don't clear tokens in startup refresh
+          // Let getTokens() handle clearing when actually requested
+          return false;
+        }
+        return true;
       }
 
       return true; // Tokens are still valid
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      await this.logError(`Failed to read tokens for startup refresh: ${errorMessage}`);
+      // Only log if it's not a file not found error (tokens already cleared)
+      if (error instanceof Error && !error.message.includes('ENOENT')) {
+        const errorMessage = error.message;
+        await this.logError(`Failed to read tokens for startup refresh: ${errorMessage}`);
+      }
       return false;
     }
   }
@@ -174,10 +221,17 @@ export class TokenStorage {
           return refreshedTokens;
         }
 
-        // If refresh failed, return expired tokens but don't clear them
-        // Let the application decide what to do with expired tokens
-        await this.logError("Token refresh failed in getTokens, returning expired tokens");
-        return tokens;
+        // If refresh failed, tokens might already be cleared by refreshTokens()
+        // Check if tokens still exist before trying to clear them again
+        try {
+          await fs.access(this.tokenFilePath);
+          await this.logError("Token refresh failed in getTokens, clearing tokens");
+          await this.clearTokens();
+        } catch {
+          // Tokens already cleared, nothing to do
+          await this.logError("Token refresh failed, tokens already cleared");
+        }
+        return null;
       }
 
       return tokens;

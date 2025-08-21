@@ -1,5 +1,5 @@
 import { detectRepo } from "../install-agent/repository-detector.js";
-import { AIAgent } from "../install-agent/ai-agent.js";
+import { NewAgent } from "../install-agent/new-agent.js";
 import { ProgressServer } from "./progress-server.js";
 import { Logger } from "../lib/logger.js";
 import React from 'react';
@@ -44,19 +44,60 @@ export interface DiscoveredInstallation {
 export async function search(query: string, path: string, jwt?: string) {
   const repo = await detectRepo(path);
 
-  const agent = new AIAgent({
+  const agent = new NewAgent({
     cwd: path,
     projectContext: repo,
     serverUrl: process.env.SOURCEWIZARD_SERVER_URL || (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sourcewizard.ai"),
     jwt: jwt,
     apiKey: process.env.SOURCEWIZARD_API_KEY,
+    onStepFinish: (stepData) => {
+      // Handle search progress updates - don't render packages here since they'll be rendered at the end
+      if (stepData.text && !stepData.packages) {
+        console.log(`🔍 ${stepData.text}`);
+      }
+    }
   });
 
   const result = await agent.searchPackages(query);
-  console.log("Search result:", result);
+  
+  // Render final search results if we have them
+  if (result.packages) {
+    renderSearchResults(result.packages, result.query, result.totalAvailable);
+  }
 
   return result;
 }
+
+function renderSearchResults(packages: any[], query: string, totalAvailable: number) {
+  console.log(`\n🔍 Search Results for "${query}":`);
+  console.log(`Found ${packages.length} recommended packages (${totalAvailable} total available)\n`);
+  
+  if (packages.length === 0) {
+    console.log("No packages found matching your query.");
+    return;
+  }
+
+  packages.forEach((pkg, index) => {
+    const integrationIcon = pkg.has_integration === true ? ' ✓' : (pkg.has_integration === false ? '' : '');
+    console.log(`${index + 1}. ${pkg.name}${integrationIcon}`);
+    if (pkg.description) {
+      console.log(`   ${pkg.description}`);
+    }
+    if (pkg.has_integration !== undefined) {
+      console.log(`   Integration: ${pkg.has_integration ? 'Available' : 'Not available'}`);
+    }
+    if (pkg.tags && pkg.tags.length > 0) {
+      console.log(`   Tags: ${pkg.tags.join(', ')}`);
+    }
+    if (pkg.language) {
+      console.log(`   Language: ${pkg.language}`);
+    }
+    console.log('');
+  });
+  
+  console.log(`Use 'sourcewizard install <package-name>' to install a package.`);
+}
+
 
 export async function install(
   name: string,
@@ -66,21 +107,15 @@ export async function install(
 ) {
   const repo = await detectRepo(path);
 
-  const agent = new AIAgent({
+  const agent = new NewAgent({
     cwd: path,
     projectContext: repo,
     serverUrl: process.env.SOURCEWIZARD_SERVER_URL || (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sourcewizard.ai"),
     jwt: jwt,
     apiKey: process.env.SOURCEWIZARD_API_KEY,
-    onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
-      onStepFinish({ text, toolCalls, toolResults, finishReason, usage });
-      // console.log("Agent step:", {
-      //   text,
-      //   toolCalls,
-      //   toolResults,
-      //   finishReason,
-      //   usage,
-      // });
+    onStepFinish: (stepData) => {
+      // Pass through the structured data to the UI
+      onStepFinish(stepData);
     },
   });
 

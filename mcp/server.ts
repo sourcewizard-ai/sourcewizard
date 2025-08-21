@@ -146,7 +146,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const apiKey = process.env.SOURCEWIZARD_API_KEY;
 
     if (!apiKey) {
-      throw new Error("SOURCEWIZARD_API_KEY environment variable is required");
+      throw new Error("Authentication required. Please set SOURCEWIZARD_API_KEY environment variable or login with 'sourcewizard login'");
     }
 
     const agent = new AIAgent({

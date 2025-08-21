@@ -17,6 +17,7 @@ export interface RepositoryActions {
   install: RepositoryAction[];
   clean: RepositoryAction[];
   check: RepositoryAction[];
+  add: RepositoryAction[];
   [key: string]: RepositoryAction[];
 }
 
@@ -774,16 +775,18 @@ async function addPackageScriptTargets(
       const runCommand = getRunCommand(packageManager);
       const scriptCommand = `${runCommand} ${scriptName}`;
 
+      // Copy actions from the main package target
       const scriptActions: RepositoryActions = {
-        build: [],
-        test: [],
-        deploy: [],
+        build: [...packageActions.build],
+        test: [...packageActions.test],
+        deploy: [...packageActions.deploy],
         dev: [{ command: scriptCommand }],
-        lint: [],
-        format: [],
-        install: [],
-        clean: [],
-        check: [],
+        lint: [...packageActions.lint],
+        format: [...packageActions.format],
+        install: [...packageActions.install],
+        clean: [...packageActions.clean],
+        check: [...packageActions.check],
+        add: [...packageActions.add],
       };
 
       targets[scriptTargetKey] = {
@@ -1004,6 +1007,7 @@ async function generatePackageActions(
     install: [],
     clean: [],
     check: [],
+    add: [],
   };
 
   await addPackageActions(pkg, actions);
@@ -1025,6 +1029,7 @@ async function generateScriptActions(
     install: [],
     clean: [],
     check: [],
+    add: [],
   };
 
   // Generate language-specific script actions
@@ -1605,6 +1610,11 @@ async function addNodePackageActions(
     command: getInstallCommand(packageManager),
   });
 
+  // Add package add action
+  actions.add.push({
+    command: getAddCommand(packageManager),
+  });
+
   try {
     const packageJsonPath = path.join(packageInfo.path, "package.json");
     const content = await fs.readFile(packageJsonPath, "utf-8");
@@ -1624,7 +1634,7 @@ async function addNodePackageActions(
         "mocha",
       ],
       deploy: ["deploy", "publish", "release", "ship"],
-      dev: ["dev", "start", "serve", "watch", "development"],
+      dev: ["dev", "serve", "watch", "development"],
       lint: ["lint", "eslint", "tslint", "check"],
       format: ["format", "prettier", "fmt"],
       clean: ["clean", "clear", "reset"],
@@ -1643,7 +1653,7 @@ async function addNodePackageActions(
     }
     if (packageInfo.language === "typescript") {
       actions.check.push({
-        command: "npx tsc --noEmit",
+        command: "tsc --noEmit",
       });
     }
   } catch {
@@ -1678,6 +1688,17 @@ async function addPythonPackageActions(
     });
   }
 
+  // Add package actions
+  if (hasPipfile) {
+    actions.add.push({
+      command: "pipenv install",
+    });
+  } else {
+    actions.add.push({
+      command: "pip install",
+    });
+  }
+
   // Test actions
   actions.test.push({
     command: "python -m pytest",
@@ -1705,6 +1726,10 @@ async function addGoPackageActions(
     command: "go mod download",
   });
 
+  actions.add.push({
+    command: "go get",
+  });
+
   actions.build.push({
     command: "go build ./...",
   });
@@ -1720,6 +1745,10 @@ async function addRustPackageActions(
 ): Promise<void> {
   actions.install.push({
     command: "cargo fetch",
+  });
+
+  actions.add.push({
+    command: "cargo add",
   });
 
   actions.build.push({
@@ -1739,6 +1768,10 @@ async function addMavenPackageActions(
     command: "mvn install",
   });
 
+  actions.add.push({
+    command: "mvn dependency:get -Dartifact=",
+  });
+
   actions.build.push({
     command: "mvn compile",
   });
@@ -1752,6 +1785,10 @@ async function addGradlePackageActions(
   packageInfo: PackageInfo,
   actions: RepositoryActions
 ): Promise<void> {
+  actions.add.push({
+    command: "./gradlew dependencies --write-locks",
+  });
+
   actions.build.push({
     command: "./gradlew build",
   });
@@ -1769,6 +1806,10 @@ async function addPhpPackageActions(
     command: "composer install",
   });
 
+  actions.add.push({
+    command: "composer require",
+  });
+
   actions.test.push({
     command: "composer test",
   });
@@ -1780,6 +1821,10 @@ async function addRubyPackageActions(
 ): Promise<void> {
   actions.install.push({
     command: "bundle install",
+  });
+
+  actions.add.push({
+    command: "bundle add",
   });
 
   actions.test.push({
@@ -2157,6 +2202,19 @@ function getRunCommand(packageManager: string): string {
   }
 }
 
+function getAddCommand(packageManager: string): string {
+  switch (packageManager) {
+    case "yarn":
+      return "yarn add";
+    case "pnpm":
+      return "pnpm add";
+    case "bun":
+      return "bun add";
+    default:
+      return "npm install";
+  }
+}
+
 export async function getBulkTargetData(
   targets: Record<string, TargetInfo>,
   repoPath: string
@@ -2192,15 +2250,21 @@ export async function getBulkTargetData(
 
 export interface ExecuteCommandOptions {
   onOutput?: (message: string, type: 'info' | 'error' | 'success') => void;
+  additionalArgs?: string[];
+}
+
+export interface ExecuteAddCommandOptions extends ExecuteCommandOptions {
+  packageName: string;
+  isDev?: boolean;
 }
 
 export async function executeRepositoryCommand(
-  actionType: "build" | "dev" | "run" | "check" | "test",
+  actionType: "build" | "dev" | "run" | "check" | "test" | "add",
   targetArg: string | undefined,
   repoPath: string,
   options: ExecuteCommandOptions = {}
 ): Promise<void> {
-  const { onOutput = () => { } } = options;
+  const { onOutput = () => { }, additionalArgs = [] } = options;
 
   try {
     onOutput(`🔍 Analyzing repository at ${repoPath}`, 'info');
@@ -2299,7 +2363,14 @@ export async function executeRepositoryCommand(
     // Run the specific action type
     if (actionType !== "check") {
       onOutput(`🚀 Running ${actionType} actions...`, 'info');
-      await executeActions(targetInfo.actions[actionType], targetInfo.path, repoPath, onOutput);
+      const shouldPassArgs = actionType === "dev" && additionalArgs.length > 0;
+      await executeActions(
+        targetInfo.actions[actionType], 
+        targetInfo.path, 
+        repoPath, 
+        onOutput,
+        shouldPassArgs ? additionalArgs : undefined
+      );
     }
 
     onOutput(`✅ ${actionType} completed successfully!`, 'success');
@@ -2315,7 +2386,8 @@ async function executeActions(
   actions: RepositoryAction[],
   targetPath: string,
   repoPath: string,
-  onOutput: (message: string, type: 'info' | 'error' | 'success') => void
+  onOutput: (message: string, type: 'info' | 'error' | 'success') => void,
+  additionalArgs?: string[]
 ): Promise<void> {
   if (actions.length === 0) {
     onOutput("⚠️  No actions defined", 'info');
@@ -2323,14 +2395,19 @@ async function executeActions(
   }
 
   for (const action of actions) {
-    onOutput(`  Running: ${action.command}`, 'info');
+    // Append additional arguments to the command if provided
+    const finalCommand = additionalArgs && additionalArgs.length > 0 
+      ? `${action.command} ${additionalArgs.join(' ')}`
+      : action.command;
+    
+    onOutput(`  Running: ${finalCommand}`, 'info');
 
     // Determine working directory - replace // with repo root
     const workingDir = targetPath === "//"
       ? repoPath
       : path.join(repoPath, targetPath);
 
-    await executeCommand(action.command, workingDir);
+    await executeCommand(finalCommand, workingDir);
   }
 }
 
@@ -2356,5 +2433,149 @@ async function executeCommand(command: string, cwd: string): Promise<void> {
       reject(new Error(`Failed to execute command "${command}": ${error.message}`));
     });
   });
+}
+
+export async function executeAddCommand(
+  targetArg: string | undefined,
+  repoPath: string,
+  options: ExecuteAddCommandOptions
+): Promise<void> {
+  const { onOutput = () => { }, packageName, isDev = false } = options;
+
+  try {
+    onOutput(`🔍 Analyzing repository at ${repoPath}`, 'info');
+
+    const repo = await detectRepo(repoPath);
+
+    if (!repo.targets || Object.keys(repo.targets).length === 0) {
+      throw new Error("No targets found in repository");
+    }
+
+    // Normalize current directory relative to repo root for smart target matching
+    const currentDir = process.cwd();
+    const normalizedCurrentPath = path.relative(repoPath, currentDir);
+    const currentPathForMatching = normalizedCurrentPath === "" ? "//" : normalizedCurrentPath;
+
+    // Determine target to use
+    let targetInfo: TargetInfo;
+    let targetKey: string;
+
+    if (targetArg) {
+      // Find target by name, key, or path variations
+      const matchingTarget = Object.entries(repo.targets).find(
+        ([key, target]) => {
+          // Exact key match
+          if (key === targetArg) return true;
+
+          // Exact name match
+          if (target.name === targetArg) return true;
+
+          // Handle // prefixed target paths
+          if (targetArg.startsWith("//")) {
+            const pathWithoutSlashes = targetArg.substring(2);
+            // Match against key without the leading colon for root targets
+            if (key.startsWith(":") && key.substring(1) === pathWithoutSlashes) return true;
+            // Match against full key
+            if (key === pathWithoutSlashes) return true;
+            // Match against path:name format
+            if (key === `${pathWithoutSlashes}:${target.name}`) return true;
+          }
+
+          // Handle relative path matching
+          if (target.path !== "//" && target.path === targetArg) return true;
+
+          // Handle relative target with colon prefix (e.g., ":sourcewizard" when in sourcewizard directory)
+          if (targetArg.startsWith(":")) {
+            const targetName = targetArg.substring(1);
+            // ONLY search in current directory - this is the key fix
+            if (target.path === currentPathForMatching && target.name === targetName) return true;
+            // No fallback to global search - path is implied to be current directory
+          }
+
+          return false;
+        }
+      );
+
+      if (!matchingTarget) {
+        const availableTargets = Object.entries(repo.targets)
+          .map(([key, target]) => `  ${key} (${target.name}) - path: ${target.path}`)
+          .join('\n');
+        throw new Error(`Target "${targetArg}" not found.\nCurrent path: ${currentPathForMatching}\nAvailable targets:\n${availableTargets}`);
+      }
+
+      [targetKey, targetInfo] = matchingTarget;
+    } else {
+      // Smart default target selection based on current directory
+      let defaultTarget: [string, TargetInfo] | undefined;
+
+      // First, try to find a target in the current directory
+      defaultTarget = Object.entries(repo.targets).find(([key, target]) =>
+        target.path === currentPathForMatching
+      );
+
+      // If not found, use root target
+      if (!defaultTarget) {
+        defaultTarget = Object.entries(repo.targets).find(([key]) => key.startsWith(":"));
+      }
+
+      // If still not found, use first available
+      if (!defaultTarget) {
+        defaultTarget = Object.entries(repo.targets)[0];
+      }
+
+      [targetKey, targetInfo] = defaultTarget;
+    }
+
+    onOutput(`📦 Using target: ${targetKey} (${targetInfo.name})`, 'info');
+
+    // Build the specific add command with package name
+    if (targetInfo.actions.add.length === 0) {
+      throw new Error(`No add command configured for target ${targetKey}`);
+    }
+
+    const baseCommand = targetInfo.actions.add[0].command;
+    let fullCommand = `${baseCommand} ${packageName}`;
+
+    // Add dev dependency flag for supported package managers
+    if (isDev && targetInfo.package_manager) {
+      switch (targetInfo.package_manager) {
+        case "npm":
+          fullCommand = `${baseCommand} --save-dev ${packageName}`;
+          break;
+        case "yarn":
+          fullCommand = `${baseCommand} --dev ${packageName}`;
+          break;
+        case "pnpm":
+          fullCommand = `${baseCommand} --save-dev ${packageName}`;
+          break;
+        case "bun":
+          fullCommand = `${baseCommand} --dev ${packageName}`;
+          break;
+        case "pip":
+          // For Python, we might want to add to requirements-dev.txt or similar
+          fullCommand = `${baseCommand} ${packageName}`;
+          break;
+        default:
+          fullCommand = `${baseCommand} ${packageName}`;
+      }
+    }
+
+    onOutput(`🚀 Adding package: ${packageName}`, 'info');
+    onOutput(`  Running: ${fullCommand}`, 'info');
+
+    // Determine working directory - replace // with repo root
+    const workingDir = targetInfo.path === "//"
+      ? repoPath
+      : path.join(repoPath, targetInfo.path);
+
+    await executeCommand(fullCommand, workingDir);
+
+    onOutput(`✅ Package ${packageName} added successfully!`, 'success');
+
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    onOutput(`❌ Failed to add package ${packageName}: ${message}`, 'error');
+    throw error;
+  }
 }
 

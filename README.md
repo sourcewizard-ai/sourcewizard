@@ -44,6 +44,31 @@ sourcewizard mcp
 
 # Check status of MCP installation
 sourcewizard status
+
+# Repository analysis
+sourcewizard repo [path]             # Analyze repository structure
+```
+
+#### Repository Commands
+
+SourceWizard intelligently detects your repository structure and runs the appropriate commands:
+
+- **Target**: Optional Bazel-style package/workspace name (e.g., `//path/to/package:name`)
+- **Path**: Optional repository path (defaults to git root)
+
+Examples:
+```bash
+# Build the entire project
+sourcewizard build
+
+# Run tests for a specific target
+sourcewizard test //sourcewizard:sourcewizard
+
+# Start dev server for current directory target
+sourcewizard dev :sourcewizard
+
+# Run type check with custom path
+sourcewizard check --path /path/to/repo
 ```
 
 ### MCP Integration

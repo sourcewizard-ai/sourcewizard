@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import { tool } from "ai";
 import z from "zod";
-import { getBulkTargetData, TargetInfo } from "./repository-detector";
+import { getBulkTargetData, TargetInfo, executeRepositoryCommand } from "./repository-detector";
 
 /**
  * Create a read_file tool for AI agents
@@ -244,6 +244,118 @@ export function createDeleteFileTool(cwd: string) {
 }
 
 /**
+ * Create an edit_file tool for AI agents
+ * @param cwd Current working directory for relative path resolution
+ */
+export function createEditFileTool(cwd: string) {
+  return tool({
+    description: "Edit a file by replacing specific content using string replacement",
+    parameters: z.object({
+      path: z
+        .string()
+        .describe("The path to the file to modify (relative to repo root)"),
+      old_string: z
+        .string()
+        .describe("The exact string to replace in the file"),
+      new_string: z
+        .string()
+        .describe("The new string to replace the old string with"),
+    }),
+    execute: async ({ path: filePath, old_string, new_string }) => {
+      try {
+        const absolutePath = path.resolve(cwd, filePath);
+        
+        // Read the current file content
+        const currentContent = await fs.readFile(absolutePath, "utf-8");
+        
+        // Check if the old_string exists in the file
+        if (!currentContent.includes(old_string)) {
+          return {
+            path: filePath,
+            error: "Old string not found in file",
+            success: false,
+          };
+        }
+        
+        // Apply the replacement
+        const newContent = currentContent.replace(old_string, new_string);
+        
+        // Write the modified content back to the file
+        await fs.writeFile(absolutePath, newContent, "utf-8");
+        
+        return {
+          path: filePath,
+          success: true,
+          message: "File edited successfully",
+        };
+      } catch (error) {
+        return {
+          path: filePath,
+          error: error instanceof Error ? error.message : String(error),
+          success: false,
+        };
+      }
+    },
+  });
+}
+
+/**
+ * Create a typecheck tool for AI agents
+ * @param cwd Current working directory for relative path resolution
+ */
+export function createTypecheckTool(cwd: string) {
+  return tool({
+    description: "Run type checking on the repository using the check command",
+    parameters: z.object({
+      target: z
+        .string()
+        .optional()
+        .describe("Target to typecheck (defaults to root target)"),
+      repoPath: z
+        .string()
+        .optional()
+        .describe("Repository path (defaults to current working directory)"),
+    }),
+    execute: async ({ target, repoPath }) => {
+      try {
+        const resolvedRepoPath = repoPath ? path.resolve(cwd, repoPath) : cwd;
+        let output = "";
+        let hasError = false;
+
+        const result = await executeRepositoryCommand(
+          "check",
+          target,
+          resolvedRepoPath,
+          {
+            onOutput: (message: string, type: 'info' | 'error' | 'success') => {
+              output += `[${type}] ${message}\n`;
+              if (type === 'error') {
+                hasError = true;
+              }
+            }
+          }
+        );
+
+        return {
+          success: !hasError,
+          output: output.trim(),
+          target: target || "default",
+          repoPath: resolvedRepoPath,
+          message: hasError ? "Type checking completed with errors" : "Type checking completed successfully"
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          target: target || "default",
+          repoPath: repoPath || cwd,
+        };
+      }
+    },
+  });
+}
+
+/**
  * Create a getBulkTargetData tool for AI agents
  * @param cwd Current working directory for relative path resolution
  * @param repositoryTargets Available targets in the repository
@@ -364,6 +476,8 @@ export function createFileOperationTools(
     list_directory: createListDirectoryTool(cwd),
     append_to_file: createAppendToFileTool(cwd),
     delete_file: createDeleteFileTool(cwd),
+    edit_file: createEditFileTool(cwd),
+    typecheck: createTypecheckTool(cwd),
   };
 
   // Only add getBulkTargetData tool if repository targets are provided

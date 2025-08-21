@@ -27,12 +27,10 @@ First, install the WorkOS AuthKit Next.js SDK:
 npm install @workos-inc/authkit-nextjs
 ```
 
-Set up your environment variables in `.env.local`:
-
-NOTE: These keys are placeholders, insert them into example file:
+Make sure to set up environment variables in `.env.local`:
 
 ```bash
-# .env.local.example
+# .env.local
 WORKOS_API_KEY='sk_example_123456789'
 WORKOS_CLIENT_ID='client_123456789'
 WORKOS_COOKIE_PASSWORD="<your password>" # generate a secure password here
@@ -51,7 +49,7 @@ export default authkitMiddleware();
 ```typescript
 // app/layout.tsx
 import type { Metadata } from "next";
-import { AuthKitProvider } from '@workos-inc/authkit-nextjs';
+import { AuthKitProvider } from '@workos-inc/authkit-nextjs/components';
 import "./globals.css";
 
 export const metadata: Metadata = {

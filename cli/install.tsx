@@ -15,16 +15,32 @@ interface AppProps {
   useMCP?: boolean;
 }
 
+function getStageDisplayName(stage: string, description?: string): string {
+  const stageNames: Record<string, string> = {
+    'thinking': 'Analyzing',
+    'reading_file': 'Reading file',
+    'reading_dir': 'Reading directory',
+    'writing_file': 'Writing file',
+    'creating_file': 'Creating file',
+    'completed': 'Completed'
+  };
+
+  const displayName = stageNames[stage] || stage;
+  return description ? `${displayName}: ${description}` : displayName;
+}
+
+
 const App: React.FC<AppProps> = ({
   packageName,
   jwt,
   useMCP = false,
 }: AppProps) => {
   const [stage, setStage] = useState("start");
+  const [currentStage, setCurrentStage] = useState<string | null>(null);
+  const [stageDescription, setStageDescription] = useState<string | null>(null);
   const [value, setValue] = useState("");
   const [progress, setProgress] = useState(0);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [maxSteps, setMaxSteps] = useState(10); // Default estimate
+  const [llmCallsCount, setLlmCallsCount] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
   const [availableInstallations, setAvailableInstallations] = useState<DiscoveredInstallation[]>([]);
   const [selectedInstallation, setSelectedInstallation] = useState<DiscoveredInstallation | null>(null);
@@ -61,8 +77,8 @@ const App: React.FC<AppProps> = ({
         } else {
           // Initialize installation state
           setProgress(0);
-          setCurrentStep(0);
-          setStage("monitoring");
+          setLlmCallsCount(0);
+          setStage("Starting installation...");
         }
       })();
     }
@@ -70,17 +86,15 @@ const App: React.FC<AppProps> = ({
 
   // Separate effect for monitoring once an installation is selected
   useEffect(() => {
-    if (stage === "monitoring") {
+    if (stage === "monitoring" || stage === "Starting installation...") {
       (async () => {
         if (useMCP) {
           // Initialize MCP monitoring state
           setProgress(10); // Start with 10% to show activity
-          setCurrentStep(1);
-          setMaxSteps(1);
         } else {
           // Initialize installation state
-          setProgress(0);
-          setCurrentStep(0);
+          setProgress(10); // Start with some progress to show activity
+          setLlmCallsCount(0);
         }
 
         try {
@@ -110,31 +124,43 @@ const App: React.FC<AppProps> = ({
             await install(
               packageName,
               process.cwd(),
-              ({ text, toolCalls, toolResults, finishReason, usage }) => {
-                // Update stage text
-                setStage(text || "Thinking...");
+              (stepData) => {
+                const { text, toolCalls, toolResults, finishReason, usage, stage: installStage, description } = stepData;
 
-                // Track step progress
-                setCurrentStep((prev) => {
-                  const newStep = prev + 1;
-
-                  // Update max steps estimate if we're getting close
-                  setMaxSteps((currentMax) => {
-                    const updatedMax =
-                      newStep >= currentMax * 0.8 ? currentMax + 5 : currentMax;
-                    // Update progress percentage with current values
-                    setProgress(Math.min((newStep / updatedMax) * 100, 95)); // Cap at 95% until complete
-                    return updatedMax;
-                  });
-
-                  return newStep;
+                // Increment LLM calls count for progress tracking
+                setLlmCallsCount((prev) => {
+                  const newCount = prev + 1;
+                  // Calculate progress based on LLM calls (each call represents progress)
+                  // Start at 10%, increment by 8% per call, cap at 90% until completion
+                  const progressIncrement = Math.min(10 + (newCount * 8), 90);
+                  setProgress(progressIncrement);
+                  return newCount;
                 });
+
+                // Update stage information from structured data
+                if (installStage && description) {
+                  setCurrentStage(installStage);
+                  setStageDescription(description);
+                  setStage(getStageDisplayName(installStage, description));
+                  
+                  // Set progress to 100% when stage is completed
+                  if (installStage === 'completed') {
+                    setProgress(100);
+                  }
+                } else {
+                  // Fallback to text-based stage
+                  setStage(text || "Thinking...");
+                  setCurrentStage(null);
+                  setStageDescription(null);
+                }
 
                 // Check if installation is complete
                 if (finishReason === "stop" || finishReason === "length") {
                   setIsComplete(true);
                   setProgress(100);
                   setStage("Installation complete!");
+                  setCurrentStage("completed");
+                  setStageDescription("Package installed successfully");
                   Logger.logInstallationSuccess(packageName, { jwt: !!jwt, finishReason, usage });
                 }
               },
@@ -212,7 +238,7 @@ const App: React.FC<AppProps> = ({
           </Text>
         </Box>
         <Box flexDirection="column" paddingLeft={2}>
-          <Box width={50} height={8} flexWrap="wrap" overflow="hidden">
+          <Box width={50} height={6} flexWrap="wrap" overflow="hidden">
             <Text color="black">
               {useMCP
                 ? selectedInstallation
@@ -222,16 +248,28 @@ const App: React.FC<AppProps> = ({
             </Text>
             <Text color="black"> </Text>
             <Text color="black">
-              Status: {stage} {packageName && `(${packageName})`}
+              Status: {stage}
             </Text>
+            {currentStage && (
+              <Text color="black">
+                Current Stage: {getStageDisplayName(currentStage)}
+              </Text>
+            )}
+            {stageDescription && (
+              <>
+                <Text color="black">
+                  Working on: {stageDescription}
+                </Text>
+                <Text color="black"> </Text>
+              </>
+            )}
             <Text color="black">
-              {useMCP
-                ? (isComplete ? "Complete" : "In Progress...")
-                : `Step: ${currentStep} / ${maxSteps} ${isComplete ? "(Complete)" : ""}`
-              }
+              {isComplete ? "Complete" : "In Progress..."}
             </Text>
           </Box>
-          <ProgressBar current={progress} total={100} width="90%" />
+          <Box paddingTop={1}>
+            <ProgressBar current={progress} total={100} width="90%" />
+          </Box>
         </Box>
       </Box>
     );

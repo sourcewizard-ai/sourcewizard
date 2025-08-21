@@ -6,7 +6,7 @@ import { CLIAuth } from "../lib/cli-web-auth/index.js";
 import { renderInstall, renderMCPStatus } from "./install";
 import { supabase } from "../lib/supabase-client.js";
 import { install, search } from "./agent.js";
-import { detectRepo, executeRepositoryCommand, ExecuteCommandOptions } from "../install-agent/repository-detector.js";
+import { detectRepo, executeRepositoryCommand, executeAddCommand, ExecuteCommandOptions, ExecuteAddCommandOptions } from "../install-agent/repository-detector.js";
 import path from "path";
 import fs from "fs";
 
@@ -33,9 +33,8 @@ export class MCPPackageCLI {
     this.program
       .command("login")
       .description("Login to your account using web browser")
-      .option("--url <url>", "Custom login page URL")
-      .action(async (options) => {
-        await this.handleLogin(options);
+      .action(async () => {
+        await this.handleLogin();
       });
 
     this.program
@@ -67,37 +66,7 @@ export class MCPPackageCLI {
         "relevance"
       )
       .action(async (query, path, options) => {
-        // Get JWT token from current session
-        let jwt: string | undefined;
-        try {
-          const tokens = await this.cliAuth.getStatus();
-          if (tokens.isAuthenticated) {
-            // Get the actual JWT token from token storage
-            const tokenStorage = (this.cliAuth as any).tokenStorage;
-            const storedTokens = await tokenStorage.getTokens();
-            jwt = storedTokens?.accessToken;
-          }
-        } catch (error) {
-          // Authentication failed - will check for API key below
-        }
-
-        // Check if we have either JWT or API key
-        const hasApiKey = !!process.env.SOURCEWIZARD_API_KEY;
-
-        if (!jwt && !hasApiKey) {
-          console.log(chalk.red("❌ Authentication required"));
-          console.log(chalk.yellow("You need to either:"));
-          console.log(chalk.gray("  1. Login with: ") + chalk.white("sourcewizard login"));
-          console.log(chalk.gray("  2. Set SOURCEWIZARD_API_KEY environment variable"));
-          console.log("");
-          console.log(chalk.gray("Get your API key at: https://sourcewizard.ai/dashboard"));
-          process.exit(1);
-        }
-
-        if (!jwt && hasApiKey) {
-          console.log(chalk.yellow("Using API key authentication"));
-        }
-
+        const jwt = await this.ensureAuthenticated();
         search(query, path || process.cwd(), jwt);
       });
 
@@ -118,37 +87,7 @@ export class MCPPackageCLI {
       .description("Install a package or code snippet with AI guidance")
       .argument("[name]", "Package or snippet name to install")
       .action(async (name: string | undefined, options: any) => {
-        // Get JWT token from current session
-        let jwt: string | undefined;
-        try {
-          const tokens = await this.cliAuth.getStatus();
-          if (tokens.isAuthenticated) {
-            // Get the actual JWT token from token storage
-            const tokenStorage = (this.cliAuth as any).tokenStorage;
-            const storedTokens = await tokenStorage.getTokens();
-            jwt = storedTokens?.accessToken;
-          }
-        } catch (error) {
-          // Authentication failed - will check for API key below
-        }
-
-        // Check if we have either JWT or API key
-        const hasApiKey = !!process.env.SOURCEWIZARD_API_KEY;
-
-        if (!jwt && !hasApiKey) {
-          console.log(chalk.red("❌ Authentication required"));
-          console.log(chalk.yellow("You need to either:"));
-          console.log(chalk.gray("  1. Login with: ") + chalk.white("sourcewizard login"));
-          console.log(chalk.gray("  2. Set SOURCEWIZARD_API_KEY environment variable"));
-          console.log("");
-          console.log(chalk.gray("Get your API key at: https://sourcewizard.ai/dashboard"));
-          process.exit(1);
-        }
-
-        if (!jwt && hasApiKey) {
-          console.log(chalk.yellow("Using API key authentication"));
-        }
-
+        const jwt = await this.ensureAuthenticated();
         renderInstall(name, jwt);
         // install(name, process.cwd());
       });
@@ -188,8 +127,14 @@ export class MCPPackageCLI {
       .description("Start development server using repository detection")
       .argument("[target]", "Target to run in dev mode (defaults to root target)")
       .option("--path <path>", "Path to the repository (defaults to git root)")
-      .action(async (target, options) => {
-        await this.handleRepositoryCommand("dev", target, options.path);
+      .allowUnknownOption()
+      .action(async (target, options, command) => {
+        // Extract additional arguments after -- from raw args
+        const rawArgs = command.args || [];
+        const dashDashIndex = process.argv.indexOf('--');
+        const additionalArgs = dashDashIndex !== -1 ? process.argv.slice(dashDashIndex + 1) : [];
+        
+        await this.handleRepositoryCommand("dev", target, options.path, additionalArgs);
       });
 
     // Check command
@@ -197,6 +142,17 @@ export class MCPPackageCLI {
       .command("check")
       .description("Run type/lint checks using repository detection")
       .argument("[target]", "Target to check (defaults to root target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .action(async (target, options) => {
+        await this.handleRepositoryCommand("check", target, options.path);
+      });
+
+    // Typecheck command - alias to check
+    this.program
+      .command("typecheck")
+      .alias("tc")
+      .description("Run type checking using repository detection (alias for check)")
+      .argument("[target]", "Target to typecheck (defaults to root target)")
       .option("--path <path>", "Path to the repository (defaults to git root)")
       .action(async (target, options) => {
         await this.handleRepositoryCommand("check", target, options.path);
@@ -222,12 +178,29 @@ export class MCPPackageCLI {
       .action(async (target, options) => {
         await this.handleRepositoryCommand("dev", target, options.path);
       });
+
+    // Add command
+    this.program
+      .command("add")
+      .alias("a")
+      .description("Add a package to the project using repository detection")
+      .argument("<package>", "Package name to add")
+      .argument("[target]", "Target to add package to (defaults to current directory target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .option("--dev", "Add as development dependency")
+      .action(async (packageName, target, options) => {
+        await this.handleAddCommand(packageName, target, options.path, options.dev);
+      });
   }
 
-  private async handleLogin(options: { url?: string }): Promise<void> {
+  private async handleLogin(): Promise<void> {
     try {
+      const loginPageUrl = process.env.NODE_ENV === "development"
+        ? "http://localhost:3000"
+        : "https://sourcewizard.ai";
+
       const result = await this.cliAuth.login({
-        loginPageUrl: options.url,
+        loginPageUrl,
       });
 
       if (result.isAuthenticated) {
@@ -283,6 +256,63 @@ export class MCPPackageCLI {
     }
   }
 
+  private async ensureAuthenticated(): Promise<string | undefined> {
+    // Check if we have API key first
+    const hasApiKey = !!process.env.SOURCEWIZARD_API_KEY;
+
+    if (hasApiKey) {
+      console.log(chalk.yellow("Using API key authentication"));
+      return undefined;
+    }
+
+    // Get JWT token from current session
+    let jwt: string | undefined;
+    try {
+      const tokens = await this.cliAuth.getStatus();
+      if (tokens.isAuthenticated) {
+        // Get the actual JWT token from token storage
+        const tokenStorage = (this.cliAuth as any).tokenStorage;
+        const storedTokens = await tokenStorage.getTokens();
+        jwt = storedTokens?.accessToken;
+      }
+    } catch (error) {
+      // Authentication failed - will try to get from token storage directly
+    }
+
+    // If no JWT from status, try getting directly from token storage
+    if (!jwt) {
+      try {
+        const tokenStorage = (this.cliAuth as any).tokenStorage;
+        const storedTokens = await tokenStorage.getTokens();
+        jwt = storedTokens?.accessToken;
+      } catch (error) {
+        // Token storage failed
+      }
+    }
+
+    if (!jwt) {
+      console.log(chalk.yellow("Authentication required. Starting login..."));
+      await this.handleLogin();
+
+      // After login, get JWT directly from token storage since login was successful
+      try {
+        const tokenStorage = (this.cliAuth as any).tokenStorage;
+        const storedTokens = await tokenStorage.getTokens();
+        jwt = storedTokens?.accessToken;
+      } catch (error) {
+        console.log(chalk.red("❌ Failed to retrieve tokens after login"));
+        process.exit(1);
+      }
+
+      if (!jwt) {
+        console.log(chalk.red("❌ No access token found after login"));
+        process.exit(1);
+      }
+    }
+
+    return jwt;
+  }
+
   private findGitRepoRoot(startPath: string): string {
     let currentPath = path.resolve(startPath);
     const root = path.parse(currentPath).root;
@@ -300,45 +330,58 @@ export class MCPPackageCLI {
   }
 
   private async handleRepositoryCommand(
-    actionType: "build" | "dev" | "check" | "test", 
+    actionType: "build" | "dev" | "check" | "test",
     targetArg: string | undefined,
-    repoPath: string | undefined
+    repoPath: string | undefined,
+    additionalArgs: string[] = []
   ): Promise<void> {
     try {
-      // Get JWT token from current session
-      let jwt: string | undefined;
-      try {
-        const tokens = await this.cliAuth.getStatus();
-        if (tokens.isAuthenticated) {
-          // Get the actual JWT token from token storage
-          const tokenStorage = (this.cliAuth as any).tokenStorage;
-          const storedTokens = await tokenStorage.getTokens();
-          jwt = storedTokens?.accessToken;
-        }
-      } catch (error) {
-        // Authentication failed - will check for API key below
-      }
-
-      // Check if we have either JWT or API key
-      const hasApiKey = !!process.env.SOURCEWIZARD_API_KEY;
-
-      if (!jwt && !hasApiKey) {
-        console.log(chalk.red("❌ Authentication required"));
-        console.log(chalk.yellow("You need to either:"));
-        console.log(chalk.gray("  1. Login with: ") + chalk.white("sourcewizard login"));
-        console.log(chalk.gray("  2. Set SOURCEWIZARD_API_KEY environment variable"));
-        console.log("");
-        console.log(chalk.gray("Get your API key at: https://sourcewizard.ai/dashboard"));
-        process.exit(1);
-      }
-
-      if (!jwt && hasApiKey) {
-        console.log(chalk.yellow("Using API key authentication"));
-      }
+      const jwt = await this.ensureAuthenticated();
 
       const workingDir = repoPath ? path.resolve(repoPath) : this.findGitRepoRoot(process.cwd());
-      
+
       const options: ExecuteCommandOptions = {
+        onOutput: (message: string, type: 'info' | 'error' | 'success') => {
+          switch (type) {
+            case 'info':
+              console.log(chalk.blue(message));
+              break;
+            case 'success':
+              console.log(chalk.green(message));
+              break;
+            case 'error':
+              console.log(chalk.red(message));
+              break;
+          }
+        },
+        additionalArgs
+      };
+
+      await executeRepositoryCommand(actionType, targetArg, workingDir, options);
+
+    } catch (error) {
+      console.error(
+        chalk.red(`❌ ${actionType} failed:`),
+        error instanceof Error ? error.message : String(error)
+      );
+      process.exit(1);
+    }
+  }
+
+  private async handleAddCommand(
+    packageName: string,
+    targetArg: string | undefined,
+    repoPath: string | undefined,
+    isDev: boolean = false
+  ): Promise<void> {
+    try {
+      const jwt = await this.ensureAuthenticated();
+
+      const workingDir = repoPath ? path.resolve(repoPath) : this.findGitRepoRoot(process.cwd());
+
+      const options: ExecuteAddCommandOptions = {
+        packageName,
+        isDev,
         onOutput: (message: string, type: 'info' | 'error' | 'success') => {
           switch (type) {
             case 'info':
@@ -353,12 +396,12 @@ export class MCPPackageCLI {
           }
         }
       };
-      
-      await executeRepositoryCommand(actionType, targetArg, workingDir, options);
-      
+
+      await executeAddCommand(targetArg, workingDir, options);
+
     } catch (error) {
       console.error(
-        chalk.red(`❌ ${actionType} failed:`),
+        chalk.red(`❌ Failed to add package ${packageName}:`),
         error instanceof Error ? error.message : String(error)
       );
       process.exit(1);
@@ -371,7 +414,16 @@ export class MCPPackageCLI {
       // Initialize authentication on startup
       await this.cliAuth.initialize();
 
-      await this.program.parseAsync(process.argv);
+      // Handle -- argument separation for dev command
+      let argsToProcess = process.argv;
+      const dashDashIndex = process.argv.indexOf('--');
+      
+      if (dashDashIndex !== -1 && process.argv.includes('dev')) {
+        // Remove -- and everything after it from commander parsing
+        argsToProcess = process.argv.slice(0, dashDashIndex);
+      }
+
+      await this.program.parseAsync(argsToProcess);
     } catch (error) {
       console.error(
         chalk.red("CLI Error:"),

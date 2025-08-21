@@ -28,7 +28,7 @@ export class CLIAuth {
   async initialize(): Promise<void> {
     // First attempt to refresh tokens on startup
     await this.tokenStorage.attemptStartupRefresh();
-    
+
     // Then get tokens (which may have been refreshed)
     const tokens = await this.tokenStorage.getTokens();
 
@@ -66,8 +66,7 @@ export class CLIAuth {
 
       // Construct login page URL with callback parameter
       const loginPageUrl =
-        options.loginPageUrl ||
-        `http://localhost:3000/cli-login?redirect_to=${encodeURIComponent(
+        `${options.loginPageUrl}/cli-login?redirect_to=${encodeURIComponent(
           callbackUrl
         )}`;
 

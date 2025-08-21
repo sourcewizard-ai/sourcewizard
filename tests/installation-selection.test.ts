@@ -179,18 +179,12 @@ describe('Installation Selection', () => {
   it('should discover multiple installations with proper display names', async () => {
     // Create multiple MCP servers with different installation states
     createMCPServerFile(3001, 1001, '/test/project1'); // Empty server (ready)
-    
-    await new Promise(resolve => setTimeout(resolve, 5)); // Small delay to ensure different startTime
     createMCPServerFile(3002, 1002, '/test/project2', {
       'install1': createInstallationInfo('install1', 'express', 'installing')
     });
-    
-    await new Promise(resolve => setTimeout(resolve, 5));
     createMCPServerFile(3003, 1003, '/test/project3', {
       'install2': createInstallationInfo('install2', 'react', 'completed')
     });
-    
-    await new Promise(resolve => setTimeout(resolve, 5));
     createMCPServerFile(3004, 1004, '/test/project4', {
       'install3': createInstallationInfo('install3', 'typescript', 'error')
     });
@@ -199,19 +193,20 @@ describe('Installation Selection', () => {
 
     expect(installations).toHaveLength(4);
     
+    // Sort installations by display name for consistent validation
+    const sortedInstallations = installations.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    
     // Check display names are formatted correctly based on status
-    expect(installations.some(i => i.displayName.includes('❌ Failed typescript'))).toBe(true);
-    expect(installations.some(i => i.displayName.includes('✅ Completed react'))).toBe(true);
-    expect(installations.some(i => i.displayName.includes('⏳ Installing express'))).toBe(true);
-    expect(installations.some(i => i.displayName.includes('Ready for installation'))).toBe(true);
+    expect(sortedInstallations.some(i => i.displayName.includes('❌ Failed typescript'))).toBe(true);
+    expect(sortedInstallations.some(i => i.displayName.includes('✅ Completed react'))).toBe(true);
+    expect(sortedInstallations.some(i => i.displayName.includes('⏳ Installing express'))).toBe(true);
+    expect(sortedInstallations.some(i => i.displayName.includes('Ready for installation'))).toBe(true);
   });
 
   it('should handle installations in different directories', async () => {
     createMCPServerFile(3001, 1001, '/home/user/project-a', {
       'install1': createInstallationInfo('install1', 'lodash', 'installing')
     });
-    
-    await new Promise(resolve => setTimeout(resolve, 5)); // Small delay to ensure different startTime  
     createMCPServerFile(3002, 1002, '/home/user/project-b/subdir'); // Empty server
 
     const installations = await discoverInstallations();

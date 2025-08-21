@@ -98,8 +98,7 @@ export class AIAgent {
 
     const result = await generateText({
       // this is ignored on the server side
-      //model: anthropic("claude-4-sonnet-20250514"),
-      model: anthropic("claude-3-5-sonnet-20240620"),
+      model: anthropic("claude-4-sonnet-20250514"),
       prompt: JSON.stringify(prompt),
       onStepFinish: this.onStepFinish,
     });
