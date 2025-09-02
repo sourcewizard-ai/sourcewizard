@@ -1,8 +1,9 @@
-import { getBulkTargetData, ProjectContext, executeRepositoryCommand } from "./repository-detector.js";
+import { getBulkTargetData, ProjectContext, executeRepositoryCommand, detectRepo } from "./repository-detector.js";
 import { toolDefinitions } from "./tools-schema.js";
 import * as fs from "fs";
 import * as path from "path";
 import { promises as fsp } from "fs";
+import { spawn } from "child_process";
 
 export interface NewAgentOptions {
   serverUrl: string;
@@ -180,7 +181,7 @@ export class NewAgent {
             text: result.message,
             toolCalls: [],
             toolResults: [],
-            finishReason: 'stop',
+            finishReason: result.data?.finishReason || 'stop',
             usage: {},
             structuredData: result.data,
             // Include specific fields for backward compatibility and easy access
@@ -489,24 +490,85 @@ export class NewAgent {
       let output = "";
       let hasError = false;
 
-      await executeRepositoryCommand(
-        "check",
-        target,
-        resolvedRepoPath,
-        {
-          onOutput: (message: string, type: 'info' | 'error' | 'success') => {
-            output += `[${type}] ${message}\n`;
-            if (type === 'error') {
+      // Get repository info
+      const repo = await detectRepo(resolvedRepoPath);
+      if (!repo.targets || Object.keys(repo.targets).length === 0) {
+        return {
+          success: false,
+          error: "No targets found in repository",
+          target: target || "default",
+          repoPath: resolvedRepoPath,
+        };
+      }
+
+      // Find the appropriate target
+      const targetKey = target ? Object.keys(repo.targets).find(key => key.includes(target)) : Object.keys(repo.targets)[0];
+      if (!targetKey) {
+        return {
+          success: false,
+          error: `Target "${target}" not found`,
+          target: target || "default", 
+          repoPath: resolvedRepoPath,
+        };
+      }
+
+      const targetInfo = repo.targets[targetKey];
+      const checkActions = targetInfo.actions?.check || [];
+      
+      if (checkActions.length === 0) {
+        return {
+          success: false,
+          error: "No check actions defined for target",
+          target: target || "default",
+          repoPath: resolvedRepoPath,
+        };
+      }
+
+      // Execute check commands silently (no output to console)
+      for (const action of checkActions) {
+        await new Promise<void>((resolve, reject) => {
+          const [cmd, ...args] = action.command.split(" ");
+          const child = spawn(cmd, args, {
+            cwd: targetInfo.path ? path.resolve(resolvedRepoPath, targetInfo.path) : resolvedRepoPath,
+            stdio: 'pipe', // Capture all output, don't inherit to console
+            shell: true
+          });
+
+          let stdout = '';
+          let stderr = '';
+          
+          child.stdout?.on('data', (data) => {
+            stdout += data.toString();
+          });
+          
+          child.stderr?.on('data', (data) => {
+            stderr += data.toString();
+            hasError = true;
+          });
+
+          child.on("close", (code) => {
+            // Only capture actual errors, not info output
+            if (code !== 0) {
               hasError = true;
+              if (stderr) {
+                output += `${stderr.trim()}\n`;
+              }
             }
-          }
-        }
-      );
+            resolve();
+          });
+
+          child.on("error", (error) => {
+            hasError = true;
+            output += `Failed to execute: ${error.message}\n`;
+            resolve();
+          });
+        });
+      }
 
       return {
         success: !hasError,
-        output: output.trim(),
-        target: target || "default",
+        output: output.trim() || (hasError ? "Type checking failed" : "Type checking passed"),
+        target: targetKey,
         repoPath: resolvedRepoPath,
         message: hasError ? "Type checking completed with errors" : "Type checking completed successfully"
       };

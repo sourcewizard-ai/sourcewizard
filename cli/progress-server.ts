@@ -4,9 +4,16 @@ import cors from "cors";
 export interface ProgressUpdate {
   installationId?: string;
   text?: string;
-  step: number;
-  maxSteps: number;
-  progress: number;
+  toolCalls?: any[];
+  toolResults?: any[];
+  finishReason?: string;
+  usage?: any;
+  stage?: string;
+  description?: string;
+  // Legacy fields for backwards compatibility
+  step?: number;
+  maxSteps?: number;
+  progress?: number;
   isComplete: boolean;
   error?: string;
 }
@@ -23,11 +30,11 @@ export class ProgressServer {
     this.app = express();
     this.installationProgress = new Map();
     this.defaultProgress = {
-      step: 0,
-      maxSteps: 10,
-      progress: 0,
-      isComplete: false,
       text: "Ready for installation...",
+      isComplete: false,
+      stage: "waiting",
+      description: "Waiting for installation to begin",
+      progress: 0
     };
 
     this.setupRoutes();

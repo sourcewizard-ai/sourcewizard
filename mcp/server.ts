@@ -6,7 +6,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { AIAgent } from "../install-agent/ai-agent.js";
+import { NewAgent } from "../install-agent/new-agent.js";
 import { detectRepo } from "../install-agent/repository-detector.js";
 import { ProgressServer } from "../cli/progress-server.js";
 import fs from 'fs';
@@ -16,6 +16,32 @@ import path from 'path';
 // Global progress server instance
 let progressServer: ProgressServer | null = null;
 let portFilePath: string | null = null;
+
+// Call the events API for installation to get structured responses
+async function callEventsAPI(packageName: string, installationId: string): Promise<any> {
+  // Create an agent run in the database first
+  const agentId = `mcp-${installationId}`;
+  
+  // Use the same pattern as the web interface - create agent run then call events
+  const response = await fetch(`http://localhost:3000/api/agent/events`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      agent_id: agentId,
+      operation: 'install',
+      params: { package: packageName },
+      cwd: process.cwd()
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Events API call failed: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
 
 // Track individual installations
 interface InstallationProgress {
@@ -149,12 +175,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       throw new Error("Authentication required. Please set SOURCEWIZARD_API_KEY environment variable or login with 'sourcewizard login'");
     }
 
-    const agent = new AIAgent({
+    const agent = new NewAgent({
       cwd: cwd as string,
       projectContext,
       serverUrl: process.env.SOURCEWIZARD_SERVER_URL || (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sourcewizard.ai"),
       apiKey,
-      onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
+      onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage, stage, description }) => {
         // Find the currently active installation for this agent call
         // For now, we'll use the most recent installation as there's no direct way to tie agent steps to specific installations
         const currentInstallation = Array.from(activeInstallations.values())
@@ -170,13 +196,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           const progressData = {
             installationId: currentInstallation.id,
+            text: text || "Processing...",
+            toolCalls: toolCalls || [],
+            toolResults: toolResults || [],
+            finishReason: isComplete ? "stop" : undefined,
+            usage: usage || {},
+            stage: isComplete ? "completed" : (stage || "thinking"),
+            description: isComplete ? "Package installed successfully" : (description || "Processing your request"),
+            isComplete,
+            // Legacy fields for backwards compatibility
             step: currentInstallation.stepCounter,
             maxSteps,
-            progress: isComplete
-              ? 100
-              : Math.min((currentInstallation.stepCounter / maxSteps) * 100, 95),
-            text: text || "Processing...",
-            isComplete,
+            progress: isComplete ? 100 : Math.min(10 + (currentInstallation.stepCounter * 8), 99)
           };
 
           progressServer.updateProgress(progressData);
@@ -249,6 +280,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
 
         try {
+          // Install the package using the existing agent with structured progress updates
           const result = await agent.installPackage(packageName);
 
           const installation = activeInstallations.get(installationId);
@@ -261,11 +293,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               console.error(`Explicit completion update for ${installationId}: ${packageName}`);
               progressServer.updateProgress({
                 installationId: installationId,
+                text: `Installation of ${packageName} completed successfully!`,
+                toolCalls: [],
+                toolResults: [],
+                finishReason: "stop",
+                usage: {},
+                stage: "completed",
+                description: "Package installed successfully",
+                isComplete: true,
+                // Legacy fields for backwards compatibility
                 step: installation.stepCounter || 1,
                 maxSteps: 15,
-                progress: 100,
-                text: `Installation of ${packageName} completed successfully!`,
-                isComplete: true,
+                progress: 100
               });
             }
 
@@ -308,12 +347,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             if (progressServer) {
               progressServer.updateProgress({
                 installationId: installationId,
-                step: installation.stepCounter,
-                maxSteps: 15,
-                progress: 0,
                 text: `Installation failed: ${installation.error}`,
+                toolCalls: [],
+                toolResults: [],
+                finishReason: "stop",
+                usage: {},
+                stage: "completed",
+                description: `Installation failed: ${installation.error}`,
                 isComplete: true,
                 error: installation.error,
+                // Legacy fields for backwards compatibility  
+                step: installation.stepCounter,
+                maxSteps: 15,
+                progress: 0
               });
             }
 

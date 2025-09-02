@@ -34,7 +34,21 @@ export function InstallationSelection({ installations, onSelect }: Props) {
         </Text>
       </Box>
       <Box marginTop={1} paddingLeft={2}>
-        <SelectInput items={items} onSelect={handleSelect} />
+        <SelectInput 
+          items={items} 
+          onSelect={handleSelect}
+          limit={8}
+          indicatorComponent={({ isSelected }) => (
+            <Text color={isSelected ? "black" : "black"}>
+              {isSelected ? ">" : " "}
+            </Text>
+          )}
+          itemComponent={({ isSelected, label }) => (
+            <Text color="black" backgroundColor={isSelected ? "white" : undefined}>
+              {label}
+            </Text>
+          )}
+        />
       </Box>
     </Box>
   );

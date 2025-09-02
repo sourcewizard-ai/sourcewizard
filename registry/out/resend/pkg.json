@@ -1,0 +1,19 @@
+{
+    "name": "resend",
+    "description": "Resend mail sending infrastructure",
+    "language": "typescript",
+    "env": [
+        "RESEND_API_KEY"
+    ],
+    "packages": [
+        "resend"
+    ],
+    "tags": [
+        "auth"
+    ],
+    "relevant_files_pattern": [
+        "**/middleware.ts",
+        "**/app/layout.tsx"
+    ],
+    "setup_prompt": "# Send emails with Next.js\n\n> Learn how to send your first email using Next.js and the Resend Node.js SDK.\n\n## Prerequisites\n\nTo get the most out of this guide, you'll need to:\n\n* [Create an API key](https://resend.com/api-keys)\n* [Verify your domain](https://resend.com/domains)\n\nPrefer watching a video? Check out our video walkthrough below.\n\n<div className=\"aspect-video\">\n  <iframe width=\"100%\" height=\"100%\" src=\"https://www.youtube.com/embed/UqQxfpTQBaE\" title=\"YouTube video player\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\" allowfullscreen />\n</div>\n\n## 1. Install\n\nGet the Resend Node.js SDK.\n\n<CodeGroup>\n  ```bash npm\n  npm install resend\n  ```\n\n  ```bash yarn\n  yarn add resend\n  ```\n\n  ```bash pnpm\n  pnpm add resend\n  ```\n</CodeGroup>\n\n## 2. Create an email template\n\nStart by creating your email template on `components/email-template.tsx`.\n\n```tsx components/email-template.tsx\nimport * as React from 'react';\n\ninterface EmailTemplateProps {\n  firstName: string;\n}\n\nexport function EmailTemplate({ firstName }: EmailTemplateProps) {\n  return (\n    <div>\n      <h1>Welcome, {firstName}!</h1>\n    </div>\n  );\n}\n```\n\n## 3. Send email using React\n\nCreate an API file under `pages/api/send.ts` if you're using the [Pages Router](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) or create a route file under `app/api/send/route.ts` if you're using the [App Router](https://nextjs.org/docs/app/building-your-application/routing/router-handlers).\n\nImport the React email template and send an email using the `react` parameter.\n\n<CodeGroup>\n  ```ts pages/api/send.ts\n  import type { NextApiRequest, NextApiResponse } from 'next';\n  import { EmailTemplate } from '../../components/EmailTemplate';\n  import { Resend } from 'resend';\n\n  const resend = new Resend(process.env.RESEND_API_KEY);\n\n  export default async (req: NextApiRequest, res: NextApiResponse) => {\n    const { data, error } = await resend.emails.send({\n      from: 'Acme <onboarding@resend.dev>',\n      to: ['delivered@resend.dev'],\n      subject: 'Hello world',\n      react: EmailTemplate({ firstName: 'John' }),\n    });\n\n    if (error) {\n      return res.status(400).json(error);\n    }\n\n    res.status(200).json(data);\n  };\n  ```\n\n  ```ts app/api/send/route.ts\n  import { EmailTemplate } from '../../../components/EmailTemplate';\n  import { Resend } from 'resend';\n\n  const resend = new Resend(process.env.RESEND_API_KEY);\n\n  export async function POST() {\n    try {\n      const { data, error } = await resend.emails.send({\n        from: 'Acme <onboarding@resend.dev>',\n        to: ['delivered@resend.dev'],\n        subject: 'Hello world',\n        react: EmailTemplate({ firstName: 'John' }),\n      });\n\n      if (error) {\n        return Response.json({ error }, { status: 500 });\n      }\n\n      return Response.json(data);\n    } catch (error) {\n      return Response.json({ error }, { status: 500 });\n    }\n  }\n  ```\n</CodeGroup>\n\n## 4. Try it yourself\n\n<CardGroup>\n  <Card title=\"Next.js Example (Pages Router)\" icon=\"arrow-up-right-from-square\" href=\"https://github.com/resend/resend-nextjs-pages-router-example\">\n    See the full source code.\n  </Card>\n\n  <Card title=\"Next.js Example (App Router)\" icon=\"arrow-up-right-from-square\" href=\"https://github.com/resend/resend-nextjs-app-router-example\">\n    See the full source code.\n  </Card>\n</CardGroup>\n\n"
+}

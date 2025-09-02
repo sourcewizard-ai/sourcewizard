@@ -285,6 +285,8 @@ export async function watchMCPStatus(onStepFinish: (step: any) => void, selected
     // Poll for progress updates
     let isComplete = false;
     let hasConnected = false;
+    let lastProgressText = "";
+    let lastStepCounter = 0;
 
     while (!isComplete) {
       try {
@@ -307,13 +309,25 @@ export async function watchMCPStatus(onStepFinish: (step: any) => void, selected
           console.log("Connected to MCP server status");
         }
 
-        onStepFinish({
-          text: progress.text,
-          finishReason: progress.isComplete ? "stop" : undefined,
-          toolCalls: [],
-          toolResults: [],
-          usage: {},
-        });
+        // Only call onStepFinish if progress has actually changed
+        const currentText = progress.text || "";
+        const currentStepCounter = progress.step || 0;
+        
+        if (currentText !== lastProgressText || currentStepCounter !== lastStepCounter || progress.isComplete) {
+          lastProgressText = currentText;
+          lastStepCounter = currentStepCounter;
+          
+          onStepFinish({
+            text: progress.text,
+            finishReason: progress.isComplete ? "stop" : undefined,
+            toolCalls: progress.toolCalls || [],
+            toolResults: progress.toolResults || [],
+            usage: progress.usage || {},
+            stage: progress.stage,
+            description: progress.description,
+            progress: progress.progress,
+          });
+        }
 
         isComplete = progress.isComplete;
 

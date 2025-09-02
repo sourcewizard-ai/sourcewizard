@@ -1,7 +1,7 @@
 import { withFullScreen } from "fullscreen-ink";
 import { AppLayout } from "./components/layout/AppLayout";
 import React, { useEffect, useState } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import Link from "ink-link";
 import { ProgressBar } from "./components/ui/ProgressBar";
 import { Input } from "./components/ui/Input";
@@ -9,31 +9,140 @@ import { install, watchMCPStatus, listInstallations, DiscoveredInstallation } fr
 import { Logger } from "../lib/logger.js";
 import { InstallationSelection } from "./components/InstallationSelection.js";
 
+// Global installation state for signal handling
+let isInstallationInProgress = false;
+let currentInstallationPromise: Promise<void> | null = null;
+
+// Global signal handler
+const handleTermination = () => {
+  if (isInstallationInProgress) {
+    console.log("\n\nInstallation cancelled by user.");
+    process.exit(0);
+  }
+};
+
+process.on('SIGINT', handleTermination);
+process.on('SIGTERM', handleTermination);
+
+// Common interface for installation progress updates
+interface InstallationProgressUpdate {
+  text?: string;
+  toolCalls?: any[];
+  toolResults?: any[];
+  finishReason?: string;
+  usage?: any;
+  stage?: string;
+  description?: string;
+  progress?: number; // Progress percentage from MCP server
+}
+
+// Common interface for installation provider
+interface InstallationProvider {
+  start(callback: (update: InstallationProgressUpdate) => void): Promise<void>;
+}
+
 interface AppProps {
   packageName: string;
   jwt?: string;
-  useMCP?: boolean;
+  installationProvider: InstallationProvider;
 }
 
 function getStageDisplayName(stage: string, description?: string): string {
   const stageNames: Record<string, string> = {
     'thinking': 'Analyzing',
     'reading_file': 'Reading file',
-    'reading_dir': 'Reading directory',
+    'reading_dir': 'Reading directory', 
     'writing_file': 'Writing file',
     'creating_file': 'Creating file',
-    'completed': 'Completed'
+    'completed': 'Completed',
+    'waiting': 'Ready'
   };
 
   const displayName = stageNames[stage] || stage;
   return description ? `${displayName}: ${description}` : displayName;
 }
 
+// MCP Installation App that handles selection flow
+const MCPInstallApp: React.FC<{ packageName: string; jwt?: string }> = ({ packageName, jwt }) => {
+  const [stage, setStage] = useState<'discovering' | 'selecting' | 'installing'>('discovering');
+  const [installations, setInstallations] = useState<DiscoveredInstallation[]>([]);
+  const [selectedInstallation, setSelectedInstallation] = useState<DiscoveredInstallation | null>(null);
+
+  useEffect(() => {
+    if (stage === 'discovering') {
+      (async () => {
+        try {
+          const discovered = await listInstallations();
+          setInstallations(discovered);
+          
+          if (discovered.length === 0) {
+            setStage('installing'); // No installations, proceed directly
+          } else if (discovered.length === 1) {
+            setSelectedInstallation(discovered[0]);
+            setStage('installing'); // Single installation, auto-select
+          } else {
+            setStage('selecting'); // Multiple installations, show selection
+          }
+        } catch (error) {
+          console.error('Error discovering installations:', error);
+          setStage('installing'); // Fallback to direct installation
+        }
+      })();
+    }
+  }, [stage]);
+
+  const handleInstallationSelect = (installation: DiscoveredInstallation) => {
+    setSelectedInstallation(installation);
+    setStage('installing');
+  };
+
+  if (stage === 'discovering') {
+    return (
+      <AppLayout title="Install">
+        <Box flexDirection="column" paddingLeft={2}>
+          <Box paddingY={1}>
+            <Text color="black" bold>
+              Discovering MCP Installations...
+            </Text>
+          </Box>
+          <Box>
+            <Text color="black">
+              Please wait while we scan for available MCP installations.
+            </Text>
+          </Box>
+        </Box>
+      </AppLayout>
+    );
+  }
+
+  if (stage === 'selecting') {
+    return (
+      <AppLayout title="Install">
+        <Box flexDirection="row">
+          <Box width="2%" flexDirection="column">
+            <Box flexGrow={1} paddingY={7}></Box>
+          </Box>
+          <Box width="98%" flexDirection="column">
+            <InstallationSelection 
+              installations={installations} 
+              onSelect={handleInstallationSelect} 
+            />
+          </Box>
+        </Box>
+      </AppLayout>
+    );
+  }
+
+  // Installing stage - use the package name from the selected installation if available
+  const provider = new MCPInstallationProvider(selectedInstallation);
+  const actualPackageName = selectedInstallation?.installationInfo.packageName || packageName || 'Unknown Package';
+  return <App packageName={actualPackageName} jwt={jwt} installationProvider={provider} />;
+};
 
 const App: React.FC<AppProps> = ({
   packageName,
   jwt,
-  useMCP = false,
+  installationProvider,
 }: AppProps) => {
   const [stage, setStage] = useState("start");
   const [currentStage, setCurrentStage] = useState<string | null>(null);
@@ -42,163 +151,117 @@ const App: React.FC<AppProps> = ({
   const [progress, setProgress] = useState(0);
   const [llmCallsCount, setLlmCallsCount] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
-  const [availableInstallations, setAvailableInstallations] = useState<DiscoveredInstallation[]>([]);
-  const [selectedInstallation, setSelectedInstallation] = useState<DiscoveredInstallation | null>(null);
-  const [showingSelection, setShowingSelection] = useState(false);
+  const [installationPromise, setInstallationPromise] = useState<Promise<void> | null>(null);
+  const [isExiting, setIsExiting] = useState(false);
 
   useEffect(() => {
     if (stage === "start") {
-      (async () => {
-        if (useMCP) {
-          // First, discover available installations
-          try {
-            setStage("Discovering installations...");
-            const installations = await listInstallations();
-            setAvailableInstallations(installations);
-
-            if (installations.length === 0) {
-              setStage("No MCP installations found");
-              setIsComplete(true);
-              return;
-            } else if (installations.length === 1) {
-              // Only one installation, select it automatically
-              setSelectedInstallation(installations[0]);
-              setStage("monitoring");
-            } else {
-              // Multiple installations, show selection UI
-              setShowingSelection(true);
-              setStage("selection");
-            }
-          } catch (error) {
-            setStage("Failed to discover installations");
-            setIsComplete(true);
-            return;
-          }
-        } else {
-          // Initialize installation state
-          setProgress(0);
-          setLlmCallsCount(0);
-          setStage("Starting installation...");
-        }
-      })();
+      // Initialize installation state
+      setProgress(0);
+      setLlmCallsCount(0);
+      setStage("Starting installation...");
     }
   }, [stage]);
 
-  // Separate effect for monitoring once an installation is selected
+
+  // Start installation when stage changes to "Starting installation..."
   useEffect(() => {
-    if (stage === "monitoring" || stage === "Starting installation...") {
+    if (stage === "Starting installation...") {
       (async () => {
-        if (useMCP) {
-          // Initialize MCP monitoring state
-          setProgress(10); // Start with 10% to show activity
-        } else {
-          // Initialize installation state
-          setProgress(10); // Start with some progress to show activity
-          setLlmCallsCount(0);
-        }
+        // Initialize installation state
+        setProgress(10); // Start with some progress to show activity
+        setLlmCallsCount(0);
 
         try {
-          if (useMCP) {
-            // Watch MCP status for the selected installation
-            await watchMCPStatus(
-              ({ text, toolCalls, toolResults, finishReason, usage }) => {
-                // Update stage text only
-                setStage(text || "Watching status...");
+          isInstallationInProgress = true;
+          const installPromise = installationProvider.start((update: InstallationProgressUpdate) => {
+            const { text, toolCalls, toolResults, finishReason, usage, stage: installStage, description, progress: serverProgress } = update;
 
-                // Check if monitoring is complete
-                if (finishReason === "stop" || finishReason === "length") {
-                  setIsComplete(true);
-                  setProgress(100);
-                  setStage(text || "Installation complete!");
-                } else {
-                  // For MCP, only move progress bar if not in ready state
-                  if (!text || !text.toLowerCase().includes('ready')) {
-                    // Show gradual progress to indicate activity
-                    setProgress(prev => Math.min(prev + 2, 90)); // Gradually increase up to 90%
-                  }
-                }
-              },
-              selectedInstallation // Pass the selected installation
-            );
-          } else {
-            await install(
-              packageName,
-              process.cwd(),
-              (stepData) => {
-                const { text, toolCalls, toolResults, finishReason, usage, stage: installStage, description } = stepData;
+            // Check if installation is complete first
+            if (finishReason === "stop" || finishReason === "length" || installStage === 'completed') {
+              console.log('Installation completed detected:', { finishReason, installStage });
+              isInstallationInProgress = false;
+              setIsComplete(true);
+              setProgress(100);
+              setStage("Installation complete!");
+              setCurrentStage("completed");
+              setStageDescription("Package installed successfully");
+              Logger.logInstallationSuccess(packageName, { jwt: !!jwt, finishReason, usage });
+            } else {
+              // Update stage information from structured data
+              if (installStage && description) {
+                setCurrentStage(installStage);
+                setStageDescription(description);
+                setStage(getStageDisplayName(installStage, description));
 
-                // Increment LLM calls count for progress tracking
-                setLlmCallsCount((prev) => {
-                  const newCount = prev + 1;
-                  // Calculate progress based on LLM calls (each call represents progress)
-                  // Start at 10%, increment by 8% per call, cap at 90% until completion
-                  const progressIncrement = Math.min(10 + (newCount * 8), 90);
-                  setProgress(progressIncrement);
-                  return newCount;
-                });
-
-                // Update stage information from structured data
-                if (installStage && description) {
-                  setCurrentStage(installStage);
-                  setStageDescription(description);
-                  setStage(getStageDisplayName(installStage, description));
-                  
-                  // Set progress to 100% when stage is completed
-                  if (installStage === 'completed') {
-                    setProgress(100);
+                // Use server progress if available, otherwise calculate based on LLM calls
+                if (serverProgress !== undefined) {
+                  setProgress(serverProgress);
+                  // Reset LLM counter if we're using server progress
+                  if (installStage === 'waiting' || serverProgress === 0) {
+                    setLlmCallsCount(0);
                   }
                 } else {
-                  // Fallback to text-based stage
-                  setStage(text || "Thinking...");
-                  setCurrentStage(null);
-                  setStageDescription(null);
+                  // Only increment progress if not completed
+                  setLlmCallsCount((prev) => {
+                    const newCount = prev + 1;
+                    // Calculate progress based on LLM calls (each call represents progress)
+                    // Start at 10%, increment by 8% per call, cap at 99% until completion
+                    const progressIncrement = Math.min(10 + (newCount * 8), 99);
+                    setProgress(progressIncrement);
+                    return newCount;
+                  });
                 }
-
-                // Check if installation is complete
-                if (finishReason === "stop" || finishReason === "length") {
-                  setIsComplete(true);
-                  setProgress(100);
-                  setStage("Installation complete!");
-                  setCurrentStage("completed");
-                  setStageDescription("Package installed successfully");
-                  Logger.logInstallationSuccess(packageName, { jwt: !!jwt, finishReason, usage });
+              } else {
+                // Fallback to text-based stage - still increment calls count
+                setStage(text || "Thinking...");
+                setCurrentStage(null);
+                setStageDescription(null);
+                
+                // Use server progress if available, otherwise calculate based on LLM calls
+                if (serverProgress !== undefined) {
+                  setProgress(serverProgress);
+                } else {
+                  setLlmCallsCount((prev) => {
+                    const newCount = prev + 1;
+                    const progressIncrement = Math.min(10 + (newCount * 8), 99);
+                    setProgress(progressIncrement);
+                    return newCount;
+                  });
                 }
-              },
-              jwt
-            );
-          }
+              }
+            }
+          });
+          setInstallationPromise(installPromise);
+          currentInstallationPromise = installPromise;
+          await installPromise;
+          isInstallationInProgress = false;
         } catch (error) {
+          isInstallationInProgress = false;
           setStage("Installation failed");
           setIsComplete(true);
 
           // Log the installation error with context
           Logger.logInstallationError(packageName, error, {
             jwt: !!jwt,
-            useMCP,
             cwd: process.cwd(),
-            stage: useMCP ? "mcp_monitoring" : "installation"
+            stage: "installation"
           });
         }
       })();
     }
-  }, [stage, selectedInstallation]);
+  }, [stage, packageName, jwt, installationProvider]);
 
-  const handleInstallationSelect = (installation: DiscoveredInstallation) => {
-    setSelectedInstallation(installation);
-    setShowingSelection(false);
-    setStage("monitoring");
-  };
+  // Handle exit animation
+  useEffect(() => {
+    if (isExiting) {
+      const timer = setTimeout(() => {
+        process.exit(0);
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isExiting]);
 
-  const selectionStage = () => {
-    return (
-      <Box flexDirection="column" paddingLeft={2}>
-        <InstallationSelection
-          installations={availableInstallations}
-          onSelect={handleInstallationSelect}
-        />
-      </Box>
-    );
-  };
 
   const apiKeyStage = () => {
     return (
@@ -228,44 +291,86 @@ const App: React.FC<AppProps> = ({
   };
 
   const installStage = (packageName: string) => {
+    if (isComplete) {
+      // Completion dialog
+      return (
+        <Box flexDirection="column" paddingLeft={2}>
+          <Box paddingY={1} justifyContent="center">
+            <Text color="black" bold>
+              Installation Complete!
+            </Text>
+          </Box>
+          <Box flexDirection="column" paddingLeft={2}>
+            <Box paddingY={1} justifyContent="center">
+              <Text color="black">
+                {packageName} has been successfully installed and configured.
+              </Text>
+            </Box>
+            <Box paddingY={1} justifyContent="center">
+              <Text color="black">
+                Press Enter to continue or Ctrl+C to exit.
+              </Text>
+            </Box>
+            <Box paddingTop={1} justifyContent="center">
+              <Box backgroundColor={isExiting ? "#C0C7C8" : "#000"} paddingRight={1} paddingBottom={1}>
+                <Box 
+                  backgroundColor="#E0E0E0" 
+                  marginLeft={isExiting ? 0 : -1} 
+                  marginTop={isExiting ? 1 : 0}
+                  paddingX={3} 
+                  paddingY={1} 
+                  justifyContent="center"
+                >
+                  <Text color="black" bold>
+                    Exit the setup
+                  </Text>
+                </Box>
+              </Box>
+            </Box>
+            <Box marginLeft={-1000} height={0} overflow="hidden">
+              <Input
+                onSubmit={() => setIsExiting(true)}
+              />
+            </Box>
+          </Box>
+        </Box>
+      );
+    }
+
+    // Installation in progress
     return (
       <Box flexDirection="column" paddingLeft={2}>
         <Box paddingY={1}>
           <Text color="black" bold>
-            {useMCP
-              ? `Installing: ${selectedInstallation?.displayName || "Installing package"}`
-              : `Installing: ${packageName}`}
+            Installing: {packageName}
           </Text>
         </Box>
         <Box flexDirection="column" paddingLeft={2}>
-          <Box width={50} height={6} flexWrap="wrap" overflow="hidden">
-            <Text color="black">
-              {useMCP
-                ? selectedInstallation
-                  ? `Monitoring ${selectedInstallation.installationInfo.packageName} installation...`
-                  : "Monitoring installation progress from MCP server..."
-                : "Please sit back and relax while the agent integrates the package."}
-            </Text>
-            <Text color="black"> </Text>
-            <Text color="black">
-              Status: {stage}
-            </Text>
-            {currentStage && (
+          <Box flexDirection="column" width={50} height={6}>
+            <Box>
               <Text color="black">
-                Current Stage: {getStageDisplayName(currentStage)}
+                Please sit back and relax while the agent integrates the package.
               </Text>
+            </Box>
+            {currentStage && (
+              <Box>
+                <Text color="black">
+                  Current Stage: {getStageDisplayName(currentStage)}
+                </Text>
+              </Box>
             )}
             {stageDescription && (
-              <>
+              <Box>
                 <Text color="black">
                   Working on: {stageDescription}
                 </Text>
-                <Text color="black"> </Text>
-              </>
+              </Box>
             )}
-            <Text color="black">
-              {isComplete ? "Complete" : "In Progress..."}
-            </Text>
+            <Box>
+              <Text color="black">
+                In Progress...
+              </Text>
+            </Box>
           </Box>
           <Box paddingTop={1}>
             <ProgressBar current={progress} total={100} width="90%" />
@@ -282,22 +387,46 @@ const App: React.FC<AppProps> = ({
           <Box flexGrow={1} paddingY={7}></Box>
         </Box>
         <Box width="98%" flexDirection="column">
-          {/* {apiKeyStage()} */}
-          {showingSelection ? selectionStage() : installStage(packageName)}
+          {installStage(packageName)}
         </Box>
       </Box>
     </AppLayout>
   );
 };
 
+// Local installation provider
+class LocalInstallationProvider implements InstallationProvider {
+  constructor(
+    private packageName: string,
+    private cwd: string,
+    private jwt?: string
+  ) { }
+
+  async start(callback: (update: InstallationProgressUpdate) => void): Promise<void> {
+    await install(this.packageName, this.cwd, callback, this.jwt);
+  }
+}
+
+// MCP installation provider
+class MCPInstallationProvider implements InstallationProvider {
+  constructor(private selectedInstallation?: DiscoveredInstallation) { }
+
+  async start(callback: (update: InstallationProgressUpdate) => void): Promise<void> {
+    await watchMCPStatus(callback, this.selectedInstallation);
+  }
+}
+
 export function renderInstall(packageName: string, jwt?: string) {
+  const provider = new LocalInstallationProvider(packageName, process.cwd(), jwt);
+  
   withFullScreen(
-    <App packageName={packageName} jwt={jwt} useMCP={false} />
+    <App packageName={packageName} jwt={jwt} installationProvider={provider} />
   ).start();
 }
 
 export function renderMCPStatus(packageName: string, jwt?: string) {
+  // For MCP, we need to discover installations and show selection UI
   withFullScreen(
-    <App packageName={packageName} jwt={jwt} useMCP={true} />
+    <MCPInstallApp packageName={packageName} jwt={jwt} />
   ).start();
 }

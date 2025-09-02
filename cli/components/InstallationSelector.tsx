@@ -23,10 +23,10 @@ export default function InstallationSelector({ installations, onSelect }: Props)
   return (
     <Box flexDirection="column">
       <Text>
-        📋 Multiple MCP installations found. Please select one to follow:
+        Multiple MCP installations found. Please select one to follow:
       </Text>
       <Box marginTop={1}>
-        <SelectInput items={items} onSelect={handleSelect} />
+        <SelectInput items={items} onSelect={handleSelect} limit={8} />
       </Box>
     </Box>
   );
