@@ -329,6 +329,39 @@ export class MCPPackageCLI {
     return path.resolve(startPath);
   }
 
+  private normalizeTargetPath(target: string | undefined, workingDir: string): string | undefined {
+    if (!target) return undefined;
+
+    // If target starts with //, it's already a repository-root-relative path
+    if (target.startsWith("//")) {
+      // Remove trailing slashes for consistency
+      return target.replace(/\/+$/, "");
+    }
+
+    // If target contains a colon, it might be a target key - don't modify
+    if (target.includes(":")) {
+      return target;
+    }
+
+    // If target is a relative path, make it relative to the current directory within the repo
+    if (!path.isAbsolute(target)) {
+      // Get current directory relative to repo root
+      const currentRelative = path.relative(workingDir, process.cwd());
+      if (currentRelative === "") {
+        // We're at repo root, so relative path is just the target
+        const normalized = `//${target}`;
+        return normalized.replace(/\/+$/, ""); // Remove trailing slashes
+      } else {
+        // Construct path relative to repo root
+        const joined = path.join(currentRelative, target);
+        const normalized = `//${joined}`;
+        return normalized.replace(/\/+$/, ""); // Remove trailing slashes
+      }
+    }
+
+    return target;
+  }
+
   private async handleRepositoryCommand(
     actionType: "build" | "dev" | "check" | "test",
     targetArg: string | undefined,
@@ -339,6 +372,7 @@ export class MCPPackageCLI {
       const jwt = await this.ensureAuthenticated();
 
       const workingDir = repoPath ? path.resolve(repoPath) : this.findGitRepoRoot(process.cwd());
+      const normalizedTarget = this.normalizeTargetPath(targetArg, workingDir);
 
       const options: ExecuteCommandOptions = {
         onOutput: (message: string, type: 'info' | 'error' | 'success') => {
@@ -357,7 +391,7 @@ export class MCPPackageCLI {
         additionalArgs
       };
 
-      await executeRepositoryCommand(actionType, targetArg, workingDir, options);
+      await executeRepositoryCommand(actionType, normalizedTarget, workingDir, options);
 
     } catch (error) {
       console.error(
@@ -378,6 +412,7 @@ export class MCPPackageCLI {
       const jwt = await this.ensureAuthenticated();
 
       const workingDir = repoPath ? path.resolve(repoPath) : this.findGitRepoRoot(process.cwd());
+      const normalizedTarget = this.normalizeTargetPath(targetArg, workingDir);
 
       const options: ExecuteAddCommandOptions = {
         packageName,
@@ -397,7 +432,7 @@ export class MCPPackageCLI {
         }
       };
 
-      await executeAddCommand(targetArg, workingDir, options);
+      await executeAddCommand(normalizedTarget, workingDir, options);
 
     } catch (error) {
       console.error(

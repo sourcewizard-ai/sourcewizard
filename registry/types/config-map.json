@@ -1,7 +1,8 @@
 {
-  "registry/workos-authkit/pkg.config.ts": "PackageConfig",
   "registry/resend/pkg.config.ts": "PackageConfig",
+  "registry/workos-authkit/pkg.config.ts": "PackageConfig",
   "registry/react-blog-module/pkg.config.ts": "PackageConfig",
+  "registry/react-ai-agent-chat-sdk/pkg.config.ts": "PackageConfig",
   "registry/mailchimp/pkg.config.ts": "PackageConfig",
   "registry/clerk/pkg.config.ts": "PackageConfig"
 }

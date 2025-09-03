@@ -2303,6 +2303,8 @@ export async function executeRepositoryCommand(
             if (key === pathWithoutSlashes) return true;
             // Match against path:name format
             if (key === `${pathWithoutSlashes}:${target.name}`) return true;
+            // Match against target.path directly
+            if (target.path === pathWithoutSlashes) return true;
           }
 
           // Handle relative path matching
@@ -2479,6 +2481,8 @@ export async function executeAddCommand(
             if (key === pathWithoutSlashes) return true;
             // Match against path:name format
             if (key === `${pathWithoutSlashes}:${target.name}`) return true;
+            // Match against target.path directly
+            if (target.path === pathWithoutSlashes) return true;
           }
 
           // Handle relative path matching
