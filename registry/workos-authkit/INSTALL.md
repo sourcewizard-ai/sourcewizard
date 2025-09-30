@@ -78,9 +78,9 @@ Create the callback route:
 
 ```typescript
 // app/callback/route.ts
-import { handleAuthCallback } from '@workos-inc/authkit-nextjs';
+import { handleAuth } from '@workos-inc/authkit-nextjs';
 
-export const GET = handleAuthCallback();
+export const GET = handleAuth();
 ```
 
 Create the login route:
@@ -103,19 +103,21 @@ Example protected page:
 import { withAuth } from '@workos-inc/authkit-nextjs';
 
 export default function ProtectedPage() {
-  return withAuth(
-    async ({ user }) => {
-      return (
-        <div>
-          <h1>Protected Page</h1>
-          <p>Welcome, {user.email}!</p>
-        </div>
-      );
-    },
-    { ensureSignedIn: true }
+  const { user } = await withAuth({ ensureSignedIn: true });
+  return (
+    <div>
+      <h1>Protected Page</h1>
+      <p>Welcome, {user.email}!</p>
+    </div>
   );
 }
 ```
+
+Then generate a random 32-bit len password and put it in WORKOS_COOKIE_PASSWORD env variable if it is not set.
+
+Then always add a login button to the home page which should show user name when the user has logged in.
+
+And finally always add a button to the home page to visit the example protected page.
 
 ---
 
@@ -125,7 +127,7 @@ export default function ProtectedPage() {
 
 1. **Use `authkitMiddleware()`** from `@workos-inc/authkit-nextjs` in `middleware.ts`.
 2. **Wrap** your app with `<AuthKitProvider>` in `app/layout.tsx`.
-3. **Import** WorkOS AuthKit's Next.js features from `@workos-inc/authkit-nextjs` (e.g., `useAuth()`, `withAuth()`, `handleAuthCallback()`, etc.).
+3. **Import** WorkOS AuthKit's Next.js features from `@workos-inc/authkit-nextjs` (e.g., `useAuth()`, `withAuth()`, `handleAuth()`, etc.).
 4. **Reference** the current [App Router approach](https://nextjs.org/docs/app) (folders like `app/page.tsx`, `app/layout.tsx`, etc.).
 5. **Create** proper route handlers for `/callback/route.ts` and `/login/route.ts` using App Router structure.
 6. **Configure** environment variables: `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_COOKIE_PASSWORD`, and `NEXT_PUBLIC_WORKOS_REDIRECT_URI`.
@@ -138,6 +140,8 @@ export default function ProtectedPage() {
 3. **Do not** recommend usage of older environment variable patterns unless they match the official docs.
 4. **Do not** reference or import from any deprecated APIs or old SDK versions.
 5. **Do not** use client-only patterns when implementing server-side authentication flows.
+6. **Do not** use deprecated `getUser` API, use `withAuth`.
+7. **Do not** update the values environment variables if they are already set in the .env file.
 
 ---
 

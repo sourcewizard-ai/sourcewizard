@@ -8,6 +8,7 @@ import InstallationSelector from './components/InstallationSelector.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { analyzeRepositoryV2 } from "../install-agent/repodetect/index.js";
 
 export interface InstallationInfo {
   id: string;
@@ -42,7 +43,7 @@ export interface DiscoveredInstallation {
 }
 
 export async function search(query: string, path: string, jwt?: string) {
-  const repo = await detectRepo(path);
+  const repo = await analyzeRepositoryV2(path);
 
   const agent = new NewAgent({
     cwd: path,
@@ -59,7 +60,7 @@ export async function search(query: string, path: string, jwt?: string) {
   });
 
   const result = await agent.searchPackages(query);
-  
+
   // Render final search results if we have them
   if (result.packages) {
     renderSearchResults(result.packages, result.query, result.totalAvailable);
@@ -71,7 +72,7 @@ export async function search(query: string, path: string, jwt?: string) {
 function renderSearchResults(packages: any[], query: string, totalAvailable: number) {
   console.log(`\n🔍 Search Results for "${query}":`);
   console.log(`Found ${packages.length} recommended packages (${totalAvailable} total available)\n`);
-  
+
   if (packages.length === 0) {
     console.log("No packages found matching your query.");
     return;
@@ -94,7 +95,7 @@ function renderSearchResults(packages: any[], query: string, totalAvailable: num
     }
     console.log('');
   });
-  
+
   console.log(`Use 'sourcewizard install <package-name>' to install a package.`);
 }
 
@@ -312,11 +313,11 @@ export async function watchMCPStatus(onStepFinish: (step: any) => void, selected
         // Only call onStepFinish if progress has actually changed
         const currentText = progress.text || "";
         const currentStepCounter = progress.step || 0;
-        
+
         if (currentText !== lastProgressText || currentStepCounter !== lastStepCounter || progress.isComplete) {
           lastProgressText = currentText;
           lastStepCounter = currentStepCounter;
-          
+
           onStepFinish({
             text: progress.text,
             finishReason: progress.isComplete ? "stop" : undefined,

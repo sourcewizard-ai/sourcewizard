@@ -4,6 +4,7 @@ import fs from 'fs';
 export * from './all' // Your config types
 export { default as clerkpkgConfig } from '../clerk/pkg.config'
 export { default as mailchimppkgConfig } from '../mailchimp/pkg.config'
+export { default as mondaycompkgConfig } from '../mondaycom/pkg.config'
 export { default as reactAiAgentChatSdkpkgConfig } from '../react-ai-agent-chat-sdk/pkg.config'
 export { default as reactBlogModulepkgConfig } from '../react-blog-module/pkg.config'
 export { default as resendpkgConfig } from '../resend/pkg.config'

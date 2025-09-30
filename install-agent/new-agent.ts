@@ -1,9 +1,9 @@
-import { getBulkTargetData, ProjectContext, executeRepositoryCommand, detectRepo } from "./repository-detector.js";
+import { getBulkTargetData, ProjectContext } from "./repository-detector.js";
+import { executeRepositoryCommandV2 } from "./repodetect/index.js";
 import { toolDefinitions } from "./tools-schema.js";
-import * as fs from "fs";
 import * as path from "path";
 import { promises as fsp } from "fs";
-import { spawn } from "child_process";
+import { glob } from "glob";
 
 export interface NewAgentOptions {
   serverUrl: string;
@@ -28,6 +28,8 @@ export interface NewAgentResult {
   // Install stage fields
   stage?: string;
   description?: string;
+  // Error fields
+  error?: string;
 }
 
 export class NewAgent {
@@ -37,6 +39,7 @@ export class NewAgent {
   private apiKey?: string;
   private jwt?: string;
   private onStepFinish?: (stepData: any) => void;
+  private readFilesByAgent: Map<string, Set<string>> = new Map();
 
   constructor(options: NewAgentOptions) {
     this.cwd = options.cwd;
@@ -194,7 +197,7 @@ export class NewAgent {
 
         case 'tool_call':
           // LLM wants to call a tool - execute it and continue
-          const toolResult = await this.executeTool(result.tool_name, result.data);
+          const toolResult = await this.executeTool(agent_id, result.tool_name, result.data);
 
           // Prepare tool result payload for next iteration
           currentPayload = JSON.stringify({
@@ -206,7 +209,46 @@ export class NewAgent {
           break;
 
         case 'error':
-          throw new Error(`Agent error: ${result.message}`);
+          // Log the error but check if it's a recoverable error vs system error
+          console.warn('Agent received error response:', {
+            message: result.message,
+            timestamp: result.timestamp
+          });
+
+          // If this is a system-level error (not a tool failure), notify and throw
+          if (result.message && (
+            result.message.includes('Internal server error') ||
+            result.message.includes('Authentication required') ||
+            result.message.includes('Insufficient credits')
+          )) {
+            if (this.onStepFinish) {
+              this.onStepFinish({
+                text: result.message || '',
+                toolCalls: [],
+                toolResults: [],
+                finishReason: 'stop',
+                usage: {},
+                structuredData: result.data,
+                error: result.message || 'System error occurred',
+                isError: true
+              });
+            }
+            throw new Error(`System error: ${result.message}`);
+          }
+
+          // For other errors (likely tool failures), return a response but don't throw
+          // This allows the conversation to continue naturally
+          return {
+            text: result.message || 'An error occurred, but continuing...',
+            toolCalls: [],
+            toolResults: [],
+            finishReason: undefined, // Don't mark as finished
+            usage: {},
+            structuredData: result.data,
+            error: result.message,
+            stage: 'error',
+            description: result.message || 'Error occurred'
+          };
 
         default:
           throw new Error(`Unknown agent response action: ${result.action}`);
@@ -217,7 +259,7 @@ export class NewAgent {
     throw new Error(`Conversation exceeded maximum iterations (${maxIterations}).`);
   }
 
-  private async executeTool(toolName: string, args: any): Promise<any> {
+  private async executeTool(agentId: string, toolName: string, args: any): Promise<any> {
     console.log(`Executing tool: ${toolName}`, args);
 
     // Remove tool_call_id from args as it's not part of the tool parameters
@@ -240,7 +282,7 @@ export class NewAgent {
 
     switch (toolName) {
       case 'read_file':
-        return this.readFile(toolArgs.path);
+        return this.readFile(agentId, toolArgs.path);
 
       case 'write_file':
         return this.writeFile(toolArgs.path, toolArgs.content);
@@ -252,19 +294,28 @@ export class NewAgent {
         return this.listDirectory(toolArgs.path, toolArgs.include_hidden);
 
       case 'append_to_file':
-        return this.appendToFile(toolArgs.path, toolArgs.content);
+        return this.appendToFile(agentId, toolArgs.path, toolArgs.content);
 
       case 'delete_file':
         return this.deleteFile(toolArgs.path, toolArgs.recursive);
 
       case 'edit_file':
-        return this.editFile(toolArgs.path, toolArgs.old_string, toolArgs.new_string);
+        return this.editFile(agentId, toolArgs.path, toolArgs.old_string, toolArgs.new_string);
 
       case 'get_bulk_target_data':
         return this.getBulkTargetData(toolArgs.targetNames, toolArgs.repoPath);
 
       case 'typecheck':
         return this.typecheck(toolArgs.target, toolArgs.repoPath);
+
+      case 'add_package':
+        return this.addPackage(toolArgs.packageName, toolArgs.target, toolArgs.isDev, toolArgs.useWorkspace, toolArgs.additionalFlags, toolArgs.repoPath);
+
+      case 'grep':
+        return this.grep(agentId, toolArgs.pattern, toolArgs.paths, toolArgs.ignoreCase, toolArgs.lineNumbers, toolArgs.contextLines);
+
+      case 'search_file':
+        return this.searchFile(agentId, toolArgs.path, toolArgs.startLine, toolArgs.endLine, toolArgs.pattern, toolArgs.ignoreCase, toolArgs.includeLineNumbers);
 
       default:
         // This should never be reached due to validation above
@@ -273,10 +324,27 @@ export class NewAgent {
   }
 
   // Tool implementations
-  private async readFile(filePath: string): Promise<any> {
+  private async readFile(agentId: string, filePath: string): Promise<any> {
     try {
       const absolutePath = path.resolve(this.cwd, filePath);
       const content = await fsp.readFile(absolutePath, 'utf-8');
+
+      // Check if file has more than 3000 lines
+      const lines = content.split('\n');
+      if (lines.length > 3000) {
+        return {
+          path: filePath,
+          error: 'File is too large, use search_file tool or grep',
+          success: false
+        };
+      }
+
+      // Track that this file has been read in this agent session
+      if (!this.readFilesByAgent.has(agentId)) {
+        this.readFilesByAgent.set(agentId, new Set());
+      }
+      this.readFilesByAgent.get(agentId)!.add(path.normalize(filePath));
+
       return {
         path: filePath,
         content,
@@ -367,7 +435,17 @@ export class NewAgent {
     }
   }
 
-  private async appendToFile(filePath: string, content: string): Promise<any> {
+  private async appendToFile(agentId: string, filePath: string, content: string): Promise<any> {
+    // Check if file was read first in this agent session
+    const agentReadFiles = this.readFilesByAgent.get(agentId);
+    if (!agentReadFiles || !agentReadFiles.has(path.normalize(filePath))) {
+      return {
+        path: filePath,
+        error: 'Read file first',
+        success: false
+      };
+    }
+
     try {
       const absolutePath = path.resolve(this.cwd, filePath);
       await fsp.appendFile(absolutePath, content, 'utf-8');
@@ -408,7 +486,17 @@ export class NewAgent {
     }
   }
 
-  private async editFile(filePath: string, oldString: string, newString: string): Promise<any> {
+  private async editFile(agentId: string, filePath: string, oldString: string, newString: string): Promise<any> {
+    // Check if file was read first in this agent session
+    const agentReadFiles = this.readFilesByAgent.get(agentId);
+    if (!agentReadFiles || !agentReadFiles.has(path.normalize(filePath))) {
+      return {
+        path: filePath,
+        error: 'Read file first',
+        success: false
+      };
+    }
+
     try {
       const absolutePath = path.resolve(this.cwd, filePath);
       const currentContent = await fsp.readFile(absolutePath, 'utf-8');
@@ -429,6 +517,343 @@ export class NewAgent {
         success: true,
         message: 'File edited successfully'
       };
+    } catch (error) {
+      return {
+        path: filePath,
+        error: error instanceof Error ? error.message : String(error),
+        success: false
+      };
+    }
+  }
+
+  private async grep(agentId: string, pattern: string, paths: string | string[], ignoreCase: boolean = false, lineNumbers: boolean = true, contextLines: number = 0): Promise<any> {
+    try {
+      const pathsArray = Array.isArray(paths) ? paths : [paths];
+      const results: any[] = [];
+
+      // Create regex with appropriate flags
+      const flags = ignoreCase ? 'gi' : 'g';
+      let regex: RegExp;
+
+      try {
+        regex = new RegExp(pattern, flags);
+      } catch (regexError) {
+        return {
+          pattern,
+          error: `Invalid regex pattern: ${regexError instanceof Error ? regexError.message : String(regexError)}`,
+          success: false
+        };
+      }
+
+      // Expand glob patterns and collect all files to search
+      const filesToSearch: string[] = [];
+
+      for (const pathPattern of pathsArray) {
+        try {
+          // Check if it's a glob pattern or direct file path
+          if (pathPattern.includes('*') || pathPattern.includes('?') || pathPattern.includes('[')) {
+            // It's a glob pattern
+            const globOptions = {
+              cwd: this.cwd,
+              nodir: true, // Only return files, not directories
+              ignore: ['node_modules/**', '.git/**', 'dist/**', 'build/**', '.next/**'], // Common ignore patterns
+            };
+
+            const matchedFiles = await glob(pathPattern, globOptions);
+            filesToSearch.push(...matchedFiles);
+          } else {
+            // It's a direct file path
+            filesToSearch.push(pathPattern);
+          }
+        } catch (globError) {
+          results.push({
+            path: pathPattern,
+            error: `Glob pattern error: ${globError instanceof Error ? globError.message : String(globError)}`,
+            matches: []
+          });
+        }
+      }
+
+      // Remove duplicates
+      const uniqueFiles = Array.from(new Set(filesToSearch));
+
+      // Process each file
+      for (const filePath of uniqueFiles) {
+        try {
+          const absolutePath = path.resolve(this.cwd, filePath);
+
+          // Check if file exists and is readable
+          const stats = await fsp.stat(absolutePath);
+          if (!stats.isFile()) {
+            continue; // Skip directories
+          }
+
+          // Read file content
+          const content = await fsp.readFile(absolutePath, 'utf-8');
+
+          // Track that this file has been read in this agent session
+          if (!this.readFilesByAgent.has(agentId)) {
+            this.readFilesByAgent.set(agentId, new Set());
+          }
+          this.readFilesByAgent.get(agentId)!.add(path.normalize(filePath));
+
+          const lines = content.split('\n');
+
+          const matches: any[] = [];
+
+          // Search through each line
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // Reset regex lastIndex for global regex
+            regex.lastIndex = 0;
+            const lineMatches = Array.from(line.matchAll(regex));
+
+            if (lineMatches.length > 0) {
+              const matchData: any = {
+                line: i + 1,
+                content: line.length > 200 ? line.substring(0, 200) + '...' : line, // Truncate very long lines
+                matches: lineMatches.map(match => ({
+                  text: match[0],
+                  start: match.index,
+                  end: match.index! + match[0].length
+                }))
+              };
+
+              // Add context lines if requested
+              if (contextLines > 0) {
+                const contextStart = Math.max(0, i - contextLines);
+                const contextEnd = Math.min(lines.length - 1, i + contextLines);
+
+                matchData.context = {
+                  before: lines.slice(contextStart, i).map((line, idx) => ({
+                    line: contextStart + idx + 1,
+                    content: line.length > 200 ? line.substring(0, 200) + '...' : line
+                  })),
+                  after: lines.slice(i + 1, contextEnd + 1).map((line, idx) => ({
+                    line: i + idx + 2,
+                    content: line.length > 200 ? line.substring(0, 200) + '...' : line
+                  }))
+                };
+              }
+
+              matches.push(matchData);
+            }
+          }
+
+          if (matches.length > 0) {
+            results.push({
+              path: filePath,
+              matches,
+              totalMatches: matches.reduce((sum, match) => sum + match.matches.length, 0)
+            });
+          }
+        } catch (fileError) {
+          results.push({
+            path: filePath,
+            error: fileError instanceof Error ? fileError.message : String(fileError),
+            matches: []
+          });
+        }
+      }
+
+      return {
+        pattern,
+        results: results.sort((a, b) => {
+          // Sort by total matches (descending), then by path
+          const matchDiff = (b.totalMatches || 0) - (a.totalMatches || 0);
+          return matchDiff !== 0 ? matchDiff : a.path.localeCompare(b.path);
+        }),
+        totalFiles: uniqueFiles.length,
+        filesWithMatches: results.filter(r => !r.error && r.matches && r.matches.length > 0).length,
+        totalMatches: results.reduce((sum, result) => sum + (result.totalMatches || 0), 0),
+        success: true
+      };
+    } catch (error) {
+      return {
+        pattern,
+        error: error instanceof Error ? error.message : String(error),
+        success: false
+      };
+    }
+  }
+
+  private async searchFile(
+    agentId: string,
+    filePath: string,
+    startLine?: number,
+    endLine?: number,
+    pattern?: string,
+    ignoreCase: boolean = false,
+    includeLineNumbers: boolean = true
+  ): Promise<any> {
+    try {
+      const absolutePath = path.resolve(this.cwd, filePath);
+
+      // Check if file exists and is readable
+      let stats;
+      try {
+        stats = await fsp.stat(absolutePath);
+        if (!stats.isFile()) {
+          return {
+            path: filePath,
+            error: 'Path is not a file',
+            success: false
+          };
+        }
+      } catch (statError) {
+        return {
+          path: filePath,
+          error: statError instanceof Error ? statError.message : String(statError),
+          success: false
+        };
+      }
+
+      // Read file content
+      const content = await fsp.readFile(absolutePath, 'utf-8');
+
+      // Track that this file has been read in this agent session
+      if (!this.readFilesByAgent.has(agentId)) {
+        this.readFilesByAgent.set(agentId, new Set());
+      }
+      this.readFilesByAgent.get(agentId)!.add(path.normalize(filePath));
+
+      const lines = content.split('\n');
+      const totalLines = lines.length;
+
+      let extractStartLine: number;
+      let extractEndLine: number;
+      let extractionMethod: 'lineRange' | 'pattern';
+
+      // Determine extraction method and range
+      if (startLine !== undefined || endLine !== undefined) {
+        // Line range mode
+        extractionMethod = 'lineRange';
+        extractStartLine = Math.max(1, startLine || 1);
+        extractEndLine = Math.min(totalLines, endLine || totalLines);
+
+        if (extractStartLine > extractEndLine) {
+          return {
+            path: filePath,
+            error: 'Start line must be less than or equal to end line',
+            success: false
+          };
+        }
+      } else if (pattern) {
+        // Pattern matching mode
+        extractionMethod = 'pattern';
+
+        const flags = ignoreCase ? 'gi' : 'g';
+        let regex: RegExp;
+
+        try {
+          regex = new RegExp(pattern, flags);
+        } catch (regexError) {
+          return {
+            path: filePath,
+            error: `Invalid regex pattern: ${regexError instanceof Error ? regexError.message : String(regexError)}`,
+            success: false
+          };
+        }
+
+        let firstMatchLine: number | null = null;
+        let lastMatchLine: number | null = null;
+
+        // Find first and last match
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          regex.lastIndex = 0;
+
+          if (regex.test(line)) {
+            if (firstMatchLine === null) {
+              firstMatchLine = i + 1;
+            }
+            lastMatchLine = i + 1;
+          }
+        }
+
+        if (firstMatchLine === null) {
+          return {
+            path: filePath,
+            pattern,
+            matches: [],
+            content: '',
+            totalLines,
+            extractionMethod,
+            message: 'No matches found for pattern',
+            success: true
+          };
+        }
+
+        extractStartLine = firstMatchLine;
+        extractEndLine = lastMatchLine!;
+      } else {
+        // Neither line range nor pattern specified - read entire file
+        extractionMethod = 'lineRange';
+        extractStartLine = 1;
+        extractEndLine = totalLines;
+      }
+
+      // Extract the specified lines
+      const extractedLines = lines.slice(extractStartLine - 1, extractEndLine);
+
+      let formattedContent: string;
+      if (includeLineNumbers) {
+        formattedContent = extractedLines
+          .map((line, index) => {
+            const lineNum = extractStartLine + index;
+            return `${lineNum.toString().padStart(4, ' ')}→${line}`;
+          })
+          .join('\n');
+      } else {
+        formattedContent = extractedLines.join('\n');
+      }
+
+      // If pattern was used, also provide match information
+      let matchInfo: any = undefined;
+      if (pattern && extractionMethod === 'pattern') {
+        const flags = ignoreCase ? 'gi' : 'g';
+        const regex = new RegExp(pattern, flags);
+        const matches: any[] = [];
+
+        for (let i = extractStartLine - 1; i < extractEndLine; i++) {
+          const line = lines[i];
+          regex.lastIndex = 0;
+          const lineMatches = Array.from(line.matchAll(regex));
+
+          if (lineMatches.length > 0) {
+            matches.push({
+              line: i + 1,
+              content: line,
+              matches: lineMatches.map(match => ({
+                text: match[0],
+                start: match.index,
+                end: match.index! + match[0].length
+              }))
+            });
+          }
+        }
+
+        matchInfo = {
+          pattern,
+          totalMatches: matches.reduce((sum, match) => sum + match.matches.length, 0),
+          matchingLines: matches.length,
+          matches
+        };
+      }
+
+      return {
+        path: filePath,
+        content: formattedContent,
+        startLine: extractStartLine,
+        endLine: extractEndLine,
+        linesExtracted: extractEndLine - extractStartLine + 1,
+        totalLines,
+        extractionMethod,
+        matchInfo,
+        success: true
+      };
+
     } catch (error) {
       return {
         path: filePath,
@@ -490,85 +915,32 @@ export class NewAgent {
       let output = "";
       let hasError = false;
 
-      // Get repository info
-      const repo = await detectRepo(resolvedRepoPath);
-      if (!repo.targets || Object.keys(repo.targets).length === 0) {
-        return {
-          success: false,
-          error: "No targets found in repository",
-          target: target || "default",
-          repoPath: resolvedRepoPath,
-        };
-      }
+      // Use executeRepositoryCommandV2 for type checking
+      const results = await executeRepositoryCommandV2(
+        resolvedRepoPath,
+        resolvedRepoPath,
+        "check",
+        target,
+        []
+      );
 
-      // Find the appropriate target
-      const targetKey = target ? Object.keys(repo.targets).find(key => key.includes(target)) : Object.keys(repo.targets)[0];
-      if (!targetKey) {
-        return {
-          success: false,
-          error: `Target "${target}" not found`,
-          target: target || "default", 
-          repoPath: resolvedRepoPath,
-        };
-      }
-
-      const targetInfo = repo.targets[targetKey];
-      const checkActions = targetInfo.actions?.check || [];
-      
-      if (checkActions.length === 0) {
-        return {
-          success: false,
-          error: "No check actions defined for target",
-          target: target || "default",
-          repoPath: resolvedRepoPath,
-        };
-      }
-
-      // Execute check commands silently (no output to console)
-      for (const action of checkActions) {
-        await new Promise<void>((resolve, reject) => {
-          const [cmd, ...args] = action.command.split(" ");
-          const child = spawn(cmd, args, {
-            cwd: targetInfo.path ? path.resolve(resolvedRepoPath, targetInfo.path) : resolvedRepoPath,
-            stdio: 'pipe', // Capture all output, don't inherit to console
-            shell: true
-          });
-
-          let stdout = '';
-          let stderr = '';
-          
-          child.stdout?.on('data', (data) => {
-            stdout += data.toString();
-          });
-          
-          child.stderr?.on('data', (data) => {
-            stderr += data.toString();
-            hasError = true;
-          });
-
-          child.on("close", (code) => {
-            // Only capture actual errors, not info output
-            if (code !== 0) {
-              hasError = true;
-              if (stderr) {
-                output += `${stderr.trim()}\n`;
-              }
-            }
-            resolve();
-          });
-
-          child.on("error", (error) => {
-            hasError = true;
-            output += `Failed to execute: ${error.message}\n`;
-            resolve();
-          });
-        });
+      // Process results to extract output
+      for (const result of results) {
+        if (result.stdout) {
+          output += result.stdout + "\n";
+        }
+        if (result.stderr) {
+          output += result.stderr + "\n";
+        }
+        if (result.exitCode !== 0) {
+          hasError = true;
+        }
       }
 
       return {
         success: !hasError,
-        output: output.trim() || (hasError ? "Type checking failed" : "Type checking passed"),
-        target: targetKey,
+        output: output.trim() || "No output captured",
+        target: target || "default",
         repoPath: resolvedRepoPath,
         message: hasError ? "Type checking completed with errors" : "Type checking completed successfully"
       };
@@ -577,6 +949,72 @@ export class NewAgent {
         success: false,
         error: error instanceof Error ? error.message : String(error),
         target: target || "default",
+        repoPath: repoPath || this.cwd,
+      };
+    }
+  }
+
+  private async addPackage(
+    packageName: string,
+    target?: string,
+    isDev?: boolean,
+    useWorkspace?: boolean,
+    additionalFlags?: string[],
+    repoPath?: string
+  ): Promise<any> {
+    const resolvedRepoPath = repoPath ? path.resolve(this.cwd, repoPath) : this.cwd;
+    let output = "";
+    let hasError = false;
+
+    try {
+      // Prepare additional arguments for V2 command
+      const actionArgs = [packageName];
+      if (isDev) actionArgs.push("--dev");
+      if (additionalFlags) actionArgs.push(...additionalFlags);
+
+      // Use executeRepositoryCommandV2 for package addition
+      const results = await executeRepositoryCommandV2(
+        resolvedRepoPath,
+        resolvedRepoPath,
+        "add-package",
+        target,
+        actionArgs
+      );
+
+      // Process results to extract output
+      for (const result of results) {
+        if (result.stdout) {
+          output += result.stdout + "\n";
+        }
+        if (result.stderr) {
+          output += result.stderr + "\n";
+        }
+        if (result.exitCode !== 0) {
+          hasError = true;
+        }
+      }
+
+      return {
+        success: !hasError,
+        output: output.trim() || "No output captured",
+        target: target || "default",
+        packageName,
+        isDev,
+        useWorkspace,
+        additionalFlags,
+        repoPath: resolvedRepoPath,
+        message: hasError ? `Failed to add package ${packageName}` : `Package ${packageName} added successfully`
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        output: output.trim(),
+        target: target || "default",
+        packageName,
+        isDev,
+        useWorkspace,
+        additionalFlags,
         repoPath: repoPath || this.cwd,
       };
     }

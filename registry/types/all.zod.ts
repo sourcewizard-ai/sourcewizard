@@ -14,10 +14,11 @@ export const PackageConfigSchema = z.object({
 });
 
 const TYPECONF_SCHEMAS_MAP = {
-  "registry/resend/pkg.config.ts": PackageConfigSchema,
   "registry/workos-authkit/pkg.config.ts": PackageConfigSchema,
+  "registry/resend/pkg.config.ts": PackageConfigSchema,
   "registry/react-blog-module/pkg.config.ts": PackageConfigSchema,
   "registry/react-ai-agent-chat-sdk/pkg.config.ts": PackageConfigSchema,
+  "registry/mondaycom/pkg.config.ts": PackageConfigSchema,
   "registry/mailchimp/pkg.config.ts": PackageConfigSchema,
   "registry/clerk/pkg.config.ts": PackageConfigSchema,
 };

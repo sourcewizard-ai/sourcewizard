@@ -20,10 +20,10 @@ npm install react react-dom zod
 **AI Provider (choose one):**
 ```bash
 # For Anthropic Claude models
-npm install @ai-sdk/anthropic
+npm install @ai-sdk/anthropic@latest
 
 # For OpenAI models  
-npm install @ai-sdk/openai
+npm install @ai-sdk/openai@latest
 ```
 
 ### 2. Define Your Tools
@@ -56,6 +56,7 @@ const tools = {
 Create both client and server configurations:
 
 ```typescript
+// lib/agent-chat/config.ts
 import { makeAgentChatConfig } from 'react-ai-agent-chat-sdk/config';
 import { anthropic } from '@ai-sdk/anthropic';
 
@@ -71,6 +72,10 @@ const { agentChatConfig, agentChatRouteConfig } = makeAgentChatConfig({
 });
 ```
 
+NOTE: If default route - `/api/chat` or history route `/api/chat` already
+exist, update the configuration and create a route with a different name,
+without touching the existing one.
+
 ### 4. Add Chat and History Routes
 
 Create API routes for chat and history:
@@ -78,7 +83,7 @@ Create API routes for chat and history:
 **Chat Route (`app/api/chat/route.ts`):**
 ```typescript
 import { chatRoute } from 'react-ai-agent-chat-sdk/api';
-import { agentChatRouteConfig } from '@/lib/agent-config';
+import { agentChatRouteConfig } from '@/lib/agent-chat/config';
 
 export async function POST(req: Request) {
   return chatRoute(agentChatRouteConfig, req);
@@ -88,7 +93,7 @@ export async function POST(req: Request) {
 **History Route (`app/api/chat/history/route.ts`):**
 ```typescript
 import { chatHistoryRoute } from 'react-ai-agent-chat-sdk/api';
-import { agentChatRouteConfig } from '@/lib/agent-config';
+import { agentChatRouteConfig } from '@/lib/agent-chat/config';
 
 export async function GET(req: Request) {
   return chatHistoryRoute(agentChatRouteConfig, req);
@@ -99,15 +104,16 @@ export async function GET(req: Request) {
 
 Use the chat component in your React app:
 
+You can put it in `components/MyAgentChat.tsx` for better reusability.
 ```typescript
 'use client';
 
 import { useEffect, useState } from 'react';
 import { AgentChat } from 'react-ai-agent-chat-sdk';
 import 'react-ai-agent-chat-sdk/agent-chat.css';
-import { agentChatConfig } from '@/lib/agent-config';
+import { agentChatConfig } from '@/lib/agent-chat/config';
 
-export default function ChatPage() {
+export default function MyAgentChat() {
   const [conversationId, setConversationId] = useState<string>('');
   
   useEffect(() => {
@@ -170,7 +176,7 @@ export function CustomFileRenderer({ toolCall, toolResult }: {
 Add renderers to your configuration:
 
 ```typescript
-// lib/agent-chat-client-config.ts
+// lib/agent-chat/client-config.ts
 import { AgentChatConfig } from 'react-ai-agent-chat-sdk/config';
 import { CustomFileRenderer } from './renderers';
 

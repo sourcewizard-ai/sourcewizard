@@ -34,6 +34,8 @@ interface InstallationProgressUpdate {
   stage?: string;
   description?: string;
   progress?: number; // Progress percentage from MCP server
+  error?: string; // Error message if installation failed
+  isError?: boolean; // Whether this is an error update
 }
 
 // Common interface for installation provider
@@ -51,10 +53,12 @@ function getStageDisplayName(stage: string, description?: string): string {
   const stageNames: Record<string, string> = {
     'thinking': 'Analyzing',
     'reading_file': 'Reading file',
-    'reading_dir': 'Reading directory', 
+    'reading_dir': 'Reading directory',
     'writing_file': 'Writing file',
     'creating_file': 'Creating file',
+    'running_command': 'Running command',
     'completed': 'Completed',
+    'failed': 'Failed',
     'waiting': 'Ready'
   };
 
@@ -74,7 +78,7 @@ const MCPInstallApp: React.FC<{ packageName: string; jwt?: string }> = ({ packag
         try {
           const discovered = await listInstallations();
           setInstallations(discovered);
-          
+
           if (discovered.length === 0) {
             setStage('installing'); // No installations, proceed directly
           } else if (discovered.length === 1) {
@@ -123,9 +127,9 @@ const MCPInstallApp: React.FC<{ packageName: string; jwt?: string }> = ({ packag
             <Box flexGrow={1} paddingY={7}></Box>
           </Box>
           <Box width="98%" flexDirection="column">
-            <InstallationSelection 
-              installations={installations} 
-              onSelect={handleInstallationSelect} 
+            <InstallationSelection
+              installations={installations}
+              onSelect={handleInstallationSelect}
             />
           </Box>
         </Box>
@@ -175,9 +179,26 @@ const App: React.FC<AppProps> = ({
         try {
           isInstallationInProgress = true;
           const installPromise = installationProvider.start((update: InstallationProgressUpdate) => {
-            const { text, toolCalls, toolResults, finishReason, usage, stage: installStage, description, progress: serverProgress } = update;
+            const { text, toolCalls, toolResults, finishReason, usage, stage: installStage, description, progress: serverProgress, error, isError } = update;
 
-            // Check if installation is complete first
+            // Check for errors first
+            if (isError || error) {
+              console.log('Installation error detected:', { error, isError, installStage });
+              isInstallationInProgress = false;
+              setIsComplete(true);
+              setProgress(0);
+              setStage("Installation failed!");
+              setCurrentStage("failed");
+              setStageDescription(error || "Installation failed");
+              Logger.logInstallationError(packageName, new Error(error || "Installation failed"), {
+                jwt: !!jwt,
+                cwd: process.cwd(),
+                stage: "installation"
+              });
+              return;
+            }
+
+            // Check if installation is complete 
             if (finishReason === "stop" || finishReason === "length" || installStage === 'completed') {
               console.log('Installation completed detected:', { finishReason, installStage });
               isInstallationInProgress = false;
@@ -206,8 +227,8 @@ const App: React.FC<AppProps> = ({
                   setLlmCallsCount((prev) => {
                     const newCount = prev + 1;
                     // Calculate progress based on LLM calls (each call represents progress)
-                    // Start at 10%, increment by 8% per call, cap at 99% until completion
-                    const progressIncrement = Math.min(10 + (newCount * 8), 99);
+                    // Start at 10%, increment by 2% per call, cap at 99% until completion
+                    const progressIncrement = Math.min(10 + (newCount * 2), 99);
                     setProgress(progressIncrement);
                     return newCount;
                   });
@@ -217,14 +238,14 @@ const App: React.FC<AppProps> = ({
                 setStage(text || "Thinking...");
                 setCurrentStage(null);
                 setStageDescription(null);
-                
+
                 // Use server progress if available, otherwise calculate based on LLM calls
                 if (serverProgress !== undefined) {
                   setProgress(serverProgress);
                 } else {
                   setLlmCallsCount((prev) => {
                     const newCount = prev + 1;
-                    const progressIncrement = Math.min(10 + (newCount * 8), 99);
+                    const progressIncrement = Math.min(10 + (newCount * 2), 99);
                     setProgress(progressIncrement);
                     return newCount;
                   });
@@ -292,18 +313,22 @@ const App: React.FC<AppProps> = ({
 
   const installStage = (packageName: string) => {
     if (isComplete) {
+      const isSuccess = currentStage === "completed";
       // Completion dialog
       return (
         <Box flexDirection="column" paddingLeft={2}>
           <Box paddingY={1} justifyContent="center">
             <Text color="black" bold>
-              Installation Complete!
+              {isSuccess ? "Installation Complete!" : "Installation Failed!"}
             </Text>
           </Box>
           <Box flexDirection="column" paddingLeft={2}>
             <Box paddingY={1} justifyContent="center">
               <Text color="black">
-                {packageName} has been successfully installed and configured.
+                {isSuccess
+                  ? `${packageName} has been successfully installed and configured.`
+                  : `Failed to install ${packageName}. ${stageDescription || 'Please check the error logs.'}`
+                }
               </Text>
             </Box>
             <Box paddingY={1} justifyContent="center">
@@ -313,12 +338,12 @@ const App: React.FC<AppProps> = ({
             </Box>
             <Box paddingTop={1} justifyContent="center">
               <Box backgroundColor={isExiting ? "#C0C7C8" : "#000"} paddingRight={1} paddingBottom={1}>
-                <Box 
-                  backgroundColor="#E0E0E0" 
-                  marginLeft={isExiting ? 0 : -1} 
+                <Box
+                  backgroundColor="#E0E0E0"
+                  marginLeft={isExiting ? 0 : -1}
                   marginTop={isExiting ? 1 : 0}
-                  paddingX={3} 
-                  paddingY={1} 
+                  paddingX={3}
+                  paddingY={1}
                   justifyContent="center"
                 >
                   <Text color="black" bold>
@@ -418,7 +443,7 @@ class MCPInstallationProvider implements InstallationProvider {
 
 export function renderInstall(packageName: string, jwt?: string) {
   const provider = new LocalInstallationProvider(packageName, process.cwd(), jwt);
-  
+
   withFullScreen(
     <App packageName={packageName} jwt={jwt} installationProvider={provider} />
   ).start();

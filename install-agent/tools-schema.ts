@@ -104,4 +104,83 @@ export const toolDefinitions = {
         .describe("Repository path (defaults to current working directory)"),
     }),
   },
+  add_package: {
+    description: "Add a package/dependency to the repository using the add command",
+    parameters: z.object({
+      packageName: z
+        .string()
+        .describe("Name of the package to add"),
+      target: z
+        .string()
+        .optional()
+        .describe("Target to add the package to (defaults to root target)"),
+      isDev: z
+        .boolean()
+        .optional()
+        .describe("Whether to add as a dev dependency"),
+      useWorkspace: z
+        .boolean()
+        .optional()
+        .describe("Whether to use workspace flag (e.g., -w for pnpm workspaces)"),
+      additionalFlags: z
+        .array(z.string())
+        .optional()
+        .describe("Additional flags to pass to the add command"),
+      repoPath: z
+        .string()
+        .optional()
+        .describe("Repository path (defaults to current working directory)"),
+    }),
+  },
+  grep: {
+    description: "Search for regex patterns in files",
+    parameters: z.object({
+      pattern: z
+        .string()
+        .describe("The regex pattern to search for"),
+      paths: z
+        .union([z.string(), z.array(z.string())])
+        .describe("File path(s) to search in (relative to repo root). Can be a single path or array of paths"),
+      ignoreCase: z
+        .boolean()
+        .optional()
+        .describe("Whether to ignore case when matching (default: false)"),
+      lineNumbers: z
+        .boolean()
+        .optional()
+        .describe("Whether to include line numbers in results (default: true)"),
+      contextLines: z
+        .number()
+        .optional()
+        .describe("Number of context lines to show around matches (default: 0)"),
+    }),
+  },
+  search_file: {
+    description: "Read specific parts of a file by line range or by pattern matching",
+    parameters: z.object({
+      path: z
+        .string()
+        .describe("The path to the file to search in (relative to repo root)"),
+      startLine: z
+        .number()
+        .optional()
+        .describe("Starting line number (1-based) for line range reading"),
+      endLine: z
+        .number()
+        .optional()
+        .describe("Ending line number (1-based) for line range reading"),
+      pattern: z
+        .string()
+        .optional()
+        .describe("Regex pattern to find first and last matches for content extraction"),
+      ignoreCase: z
+        .boolean()
+        .optional()
+        .describe("Whether to ignore case when pattern matching (default: false)"),
+      includeLineNumbers: z
+        .boolean()
+        .optional()
+        .describe("Whether to include line numbers in output (default: true)"),
+    }),
+  },
 };

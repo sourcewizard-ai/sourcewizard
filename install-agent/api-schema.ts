@@ -39,12 +39,12 @@ export const TargetInfoSchema = z.object({
     "composer",
     "bundle",
   ]).optional(),
-  dependency_files: z.array(z.string()),
-  env_files: z.array(z.string()),
+  dependency_files: z.array(z.string()).optional(),
+  env_files: z.array(z.string()).optional(),
   entrypoint: z.string().optional(),
   target_type: z.enum(["package", "script"]).optional(),
   internal_dependencies: z.array(z.string()).optional(),
-  actions: RepositoryActionsSchema,
+  actions: RepositoryActionsSchema.optional(),
 });
 
 // Bulk Target Data Schema

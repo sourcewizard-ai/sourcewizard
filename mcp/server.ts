@@ -12,6 +12,7 @@ import { ProgressServer } from "../cli/progress-server.js";
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { analyzeRepositoryV2 } from "../install-agent/repodetect/index.js";
 
 // Global progress server instance
 let progressServer: ProgressServer | null = null;
@@ -21,7 +22,7 @@ let portFilePath: string | null = null;
 async function callEventsAPI(packageName: string, installationId: string): Promise<any> {
   // Create an agent run in the database first
   const agentId = `mcp-${installationId}`;
-  
+
   // Use the same pattern as the web interface - create agent run then call events
   const response = await fetch(`http://localhost:3000/api/agent/events`, {
     method: 'POST',
@@ -166,7 +167,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     const cwd = args.cwd || process.cwd();
-    const projectContext = await detectRepo(cwd as string);
+    const projectContext = await analyzeRepositoryV2(cwd as string);
 
     // Get API key or JWT from environment variables
     const apiKey = process.env.SOURCEWIZARD_API_KEY;

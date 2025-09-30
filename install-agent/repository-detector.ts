@@ -5,6 +5,7 @@ import { act } from "react";
 
 export interface RepositoryAction {
   command: string;
+  flags?: string[]; // Optional flags that can be appended to the command
 }
 
 export interface RepositoryActions {
@@ -45,12 +46,12 @@ export interface TargetInfo {
   | "gradle"
   | "composer"
   | "bundle";
-  dependency_files: string[]; // Full paths relative to repo root (e.g., "./package.json", "./frontend/package.json")
-  env_files: string[]; // Full paths relative to repo root, includes inherited env files
+  dependency_files?: string[]; // Full paths relative to repo root (e.g., "./package.json", "./frontend/package.json")
+  env_files?: string[]; // Full paths relative to repo root, includes inherited env files
   entrypoint?: string; // For script targets, the main script file
   target_type?: "package" | "script"; // Type of target
   internal_dependencies?: string[]; // Internal project dependencies (relative paths to modules/packages)
-  actions: RepositoryActions; // Target-specific actions
+  actions?: RepositoryActions; // Target-specific actions
 }
 export type BulkTargetData = Record<
   string,
@@ -238,6 +239,7 @@ function shouldIgnorePath(
       ignored = !pattern.isNegated;
     }
   }
+
 
   return ignored;
 }
@@ -667,6 +669,7 @@ async function convertPackagesToTargets(
 
     // Create the main package target
     const targetKey = isRoot ? `:${targetName}` : `${targetPath}:${targetName}`;
+
     const packageActions = await generatePackageActions(pkg, targetPath);
 
     targets[targetKey] = {
@@ -1610,9 +1613,23 @@ async function addNodePackageActions(
     command: getInstallCommand(packageManager),
   });
 
-  // Add package add action
+  // Add package add action with flags support
+  const addFlags: string[] = [];
+
+  // Add dev dependency flags
+  if (packageManager === "npm") {
+    addFlags.push("--save-dev");
+  } else if (packageManager === "yarn") {
+    addFlags.push("--dev");
+  } else if (packageManager === "pnpm") {
+    addFlags.push("--save-dev", "-w"); // Include workspace flag for pnpm
+  } else if (packageManager === "bun") {
+    addFlags.push("--dev");
+  }
+
   actions.add.push({
     command: getAddCommand(packageManager),
+    flags: addFlags,
   });
 
   try {
@@ -1939,6 +1956,9 @@ export async function getTargetEnvNames(
   repoPath: string
 ): Promise<string[]> {
   const envNames: string[] = [];
+  if (!targetInfo.env_files) {
+    return [];
+  }
 
   for (const envFile of targetInfo.env_files) {
     try {
@@ -1977,6 +1997,11 @@ export async function getTargetDependencies(
   dependencies: Record<string, string>;
   devDependencies?: Record<string, string>;
 }> {
+  if (!targetInfo.dependency_files) {
+    return {
+      dependencies: {},
+    };
+  }
   for (const dependencyFile of targetInfo.dependency_files) {
     try {
       // dependencyFile is now a full path relative to repo root
@@ -2256,6 +2281,8 @@ export interface ExecuteCommandOptions {
 export interface ExecuteAddCommandOptions extends ExecuteCommandOptions {
   packageName: string;
   isDev?: boolean;
+  useWorkspace?: boolean;
+  additionalFlags?: string[];
 }
 
 export async function executeRepositoryCommand(
@@ -2285,30 +2312,37 @@ export async function executeRepositoryCommand(
     let targetKey: string;
 
     if (targetArg) {
-      // Find target by name, key, or path variations
-      const matchingTarget = Object.entries(repo.targets).find(
-        ([key, target]) => {
-          // Exact key match
-          if (key === targetArg) return true;
+      // Normalize targetArg by removing ./ prefix if present
+      let normalizedTargetArg = targetArg;
+      if (targetArg.startsWith("./")) {
+        normalizedTargetArg = targetArg.substring(2);
+      }
 
-          // Exact name match
-          if (target.name === targetArg) return true;
+      // Find target by name, key, or path variations
+      let matchingTarget = Object.entries(repo.targets).find(
+        ([key, target]) => {
+          // Exact key match (both original and normalized)
+          if (key === targetArg || key === normalizedTargetArg) return true;
+
 
           // Handle // prefixed target paths
           if (targetArg.startsWith("//")) {
             const pathWithoutSlashes = targetArg.substring(2);
-            // Match against key without the leading colon for root targets
-            if (key.startsWith(":") && key.substring(1) === pathWithoutSlashes) return true;
-            // Match against full key
-            if (key === pathWithoutSlashes) return true;
+            // Match against target.path directly (highest priority for // prefix)
+            if (target.path === pathWithoutSlashes) {
+              return true;
+            }
+
             // Match against path:name format
             if (key === `${pathWithoutSlashes}:${target.name}`) return true;
-            // Match against target.path directly
-            if (target.path === pathWithoutSlashes) return true;
+
+            // Match against full key
+            if (key === pathWithoutSlashes) return true;
+
           }
 
-          // Handle relative path matching
-          if (target.path !== "//" && target.path === targetArg) return true;
+          // Handle relative path matching (both original and normalized)
+          if (target.path !== "//" && (target.path === targetArg || target.path === normalizedTargetArg)) return true;
 
           // Handle relative target with colon prefix (e.g., ":sourcewizard" when in sourcewizard directory)
           if (targetArg.startsWith(":")) {
@@ -2318,9 +2352,22 @@ export async function executeRepositoryCommand(
             // No fallback to global search - path is implied to be current directory
           }
 
+          // Exact name match (both original and normalized) - only if target argument doesn't look like a path
+          if (!targetArg.includes("/") && !targetArg.includes(":")) {
+            if (target.name === targetArg || target.name === normalizedTargetArg) return true;
+          }
+
           return false;
         }
       );
+
+      // If no match found and this is a // prefixed path, try root target name match as last resort
+      if (!matchingTarget && targetArg.startsWith("//")) {
+        const pathWithoutSlashes = targetArg.substring(2);
+        matchingTarget = Object.entries(repo.targets).find(([key, target]) =>
+          key.startsWith(":") && key.substring(1) === pathWithoutSlashes
+        );
+      }
 
       if (!matchingTarget) {
         const availableTargets = Object.entries(repo.targets)
@@ -2367,9 +2414,9 @@ export async function executeRepositoryCommand(
       onOutput(`🚀 Running ${actionType} actions...`, 'info');
       const shouldPassArgs = actionType === "dev" && additionalArgs.length > 0;
       await executeActions(
-        targetInfo.actions[actionType], 
-        targetInfo.path, 
-        repoPath, 
+        targetInfo.actions[actionType],
+        targetInfo.path,
+        repoPath,
         onOutput,
         shouldPassArgs ? additionalArgs : undefined
       );
@@ -2398,10 +2445,10 @@ async function executeActions(
 
   for (const action of actions) {
     // Append additional arguments to the command if provided
-    const finalCommand = additionalArgs && additionalArgs.length > 0 
+    const finalCommand = additionalArgs && additionalArgs.length > 0
       ? `${action.command} ${additionalArgs.join(' ')}`
       : action.command;
-    
+
     onOutput(`  Running: ${finalCommand}`, 'info');
 
     // Determine working directory - replace // with repo root
@@ -2409,30 +2456,51 @@ async function executeActions(
       ? repoPath
       : path.join(repoPath, targetPath);
 
-    await executeCommand(finalCommand, workingDir);
+    const { stdout, stderr } = await executeCommand(finalCommand, workingDir);
   }
 }
 
-async function executeCommand(command: string, cwd: string): Promise<void> {
+async function executeCommand(command: string, cwd: string): Promise<{ stdout: string, stderr: string }> {
   return new Promise((resolve, reject) => {
     const [cmd, ...args] = command.split(" ");
 
     const child = spawn(cmd, args, {
       cwd,
-      stdio: "inherit",
+      stdio: ["inherit", "pipe", "pipe"], // Inherit stdin, pipe stdout/stderr for capture
       shell: true
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', (data) => {
+      const output = data.toString();
+      stdout += output;
+      process.stdout.write(output);
+      if (process.stdout.isTTY) {
+        process.stdout.uncork?.();
+      }
+    });
+
+    child.stderr?.on('data', (data) => {
+      const output = data.toString();
+      stderr += output;
+      process.stderr.write(output);
+      if (process.stderr.isTTY) {
+        process.stderr.uncork?.();
+      }
     });
 
     child.on("close", (code) => {
       if (code === 0) {
-        resolve();
+        resolve({ stdout, stderr });
       } else {
-        reject(new Error(`Command "${command}" exited with code ${code}`));
+        reject(new Error(`Command "${command}" exited with code ${code}. stdout: ${stdout.trim()}. stderr: ${stderr.trim()}`));
       }
     });
 
     child.on("error", (error) => {
-      reject(new Error(`Failed to execute command "${command}": ${error.message}`));
+      reject(new Error(`Failed to execute command "${command}": ${error.message}. stdout: ${stdout.trim()}. stderr: ${stderr.trim()}`));
     });
   });
 }
@@ -2442,7 +2510,7 @@ export async function executeAddCommand(
   repoPath: string,
   options: ExecuteAddCommandOptions
 ): Promise<void> {
-  const { onOutput = () => { }, packageName, isDev = false } = options;
+  const { onOutput = () => { }, packageName, isDev = false, useWorkspace, additionalFlags = [] } = options;
 
   try {
     onOutput(`🔍 Analyzing repository at ${repoPath}`, 'info');
@@ -2463,30 +2531,37 @@ export async function executeAddCommand(
     let targetKey: string;
 
     if (targetArg) {
-      // Find target by name, key, or path variations
-      const matchingTarget = Object.entries(repo.targets).find(
-        ([key, target]) => {
-          // Exact key match
-          if (key === targetArg) return true;
+      // Normalize targetArg by removing ./ prefix if present
+      let normalizedTargetArg = targetArg;
+      if (targetArg.startsWith("./")) {
+        normalizedTargetArg = targetArg.substring(2);
+      }
 
-          // Exact name match
-          if (target.name === targetArg) return true;
+      // Find target by name, key, or path variations
+      let matchingTarget = Object.entries(repo.targets).find(
+        ([key, target]) => {
+          // Exact key match (both original and normalized)
+          if (key === targetArg || key === normalizedTargetArg) return true;
+
 
           // Handle // prefixed target paths
           if (targetArg.startsWith("//")) {
             const pathWithoutSlashes = targetArg.substring(2);
-            // Match against key without the leading colon for root targets
-            if (key.startsWith(":") && key.substring(1) === pathWithoutSlashes) return true;
-            // Match against full key
-            if (key === pathWithoutSlashes) return true;
+            // Match against target.path directly (highest priority for // prefix)
+            if (target.path === pathWithoutSlashes) {
+              return true;
+            }
+
             // Match against path:name format
             if (key === `${pathWithoutSlashes}:${target.name}`) return true;
-            // Match against target.path directly
-            if (target.path === pathWithoutSlashes) return true;
+
+            // Match against full key
+            if (key === pathWithoutSlashes) return true;
+
           }
 
-          // Handle relative path matching
-          if (target.path !== "//" && target.path === targetArg) return true;
+          // Handle relative path matching (both original and normalized)
+          if (target.path !== "//" && (target.path === targetArg || target.path === normalizedTargetArg)) return true;
 
           // Handle relative target with colon prefix (e.g., ":sourcewizard" when in sourcewizard directory)
           if (targetArg.startsWith(":")) {
@@ -2496,9 +2571,22 @@ export async function executeAddCommand(
             // No fallback to global search - path is implied to be current directory
           }
 
+          // Exact name match (both original and normalized) - only if target argument doesn't look like a path
+          if (!targetArg.includes("/") && !targetArg.includes(":")) {
+            if (target.name === targetArg || target.name === normalizedTargetArg) return true;
+          }
+
           return false;
         }
       );
+
+      // If no match found and this is a // prefixed path, try root target name match as last resort
+      if (!matchingTarget && targetArg.startsWith("//")) {
+        const pathWithoutSlashes = targetArg.substring(2);
+        matchingTarget = Object.entries(repo.targets).find(([key, target]) =>
+          key.startsWith(":") && key.substring(1) === pathWithoutSlashes
+        );
+      }
 
       if (!matchingTarget) {
         const availableTargets = Object.entries(repo.targets)
@@ -2537,31 +2625,36 @@ export async function executeAddCommand(
       throw new Error(`No add command configured for target ${targetKey}`);
     }
 
-    const baseCommand = targetInfo.actions.add[0].command;
+    const addAction = targetInfo.actions.add[0];
+    const baseCommand = addAction.command;
     let fullCommand = `${baseCommand} ${packageName}`;
 
-    // Add dev dependency flag for supported package managers
-    if (isDev && targetInfo.package_manager) {
-      switch (targetInfo.package_manager) {
-        case "npm":
-          fullCommand = `${baseCommand} --save-dev ${packageName}`;
-          break;
-        case "yarn":
-          fullCommand = `${baseCommand} --dev ${packageName}`;
-          break;
-        case "pnpm":
-          fullCommand = `${baseCommand} --save-dev ${packageName}`;
-          break;
-        case "bun":
-          fullCommand = `${baseCommand} --dev ${packageName}`;
-          break;
-        case "pip":
-          // For Python, we might want to add to requirements-dev.txt or similar
-          fullCommand = `${baseCommand} ${packageName}`;
-          break;
-        default:
-          fullCommand = `${baseCommand} ${packageName}`;
+    // Build flags based on requirements
+    const flagsToUse: string[] = [];
+
+    // Add workspace flag if explicitly requested or if it's pnpm and available
+    if (useWorkspace !== false && targetInfo.package_manager === "pnpm" && addAction.flags?.includes("-w")) {
+      flagsToUse.push("-w");
+    }
+
+    // Add dev dependency flag if requested and available
+    if (isDev && addAction.flags) {
+      const devFlags = addAction.flags.filter(flag =>
+        flag === "--save-dev" || flag === "--dev"
+      );
+      if (devFlags.length > 0) {
+        flagsToUse.push(devFlags[0]);
       }
+    }
+
+    // Add any additional flags passed via the tool
+    if (additionalFlags.length > 0) {
+      flagsToUse.push(...additionalFlags);
+    }
+
+    // Build final command with flags
+    if (flagsToUse.length > 0) {
+      fullCommand = `${baseCommand} ${flagsToUse.join(" ")} ${packageName}`;
     }
 
     onOutput(`🚀 Adding package: ${packageName}`, 'info');
@@ -2572,7 +2665,7 @@ export async function executeAddCommand(
       ? repoPath
       : path.join(repoPath, targetInfo.path);
 
-    await executeCommand(fullCommand, workingDir);
+    const { stdout, stderr } = await executeCommand(fullCommand, workingDir);
 
     onOutput(`✅ Package ${packageName} added successfully!`, 'success');
 

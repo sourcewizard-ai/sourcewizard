@@ -7,6 +7,7 @@ import { renderInstall, renderMCPStatus } from "./install";
 import { supabase } from "../lib/supabase-client.js";
 import { install, search } from "./agent.js";
 import { detectRepo, executeRepositoryCommand, executeAddCommand, ExecuteCommandOptions, ExecuteAddCommandOptions } from "../install-agent/repository-detector.js";
+import { executeRepositoryCommandV2, analyzeRepositoryV2, ActionType } from "../install-agent/repodetect/index.js";
 import path from "path";
 import fs from "fs";
 
@@ -70,15 +71,6 @@ export class MCPPackageCLI {
         search(query, path || process.cwd(), jwt);
       });
 
-    this.program
-      .command("repo")
-      .description("Analyze a repository")
-      .argument("[path]", "Path to the repository")
-      .action(async (path: string | undefined, options: any) => {
-        //renderInstall(name);
-        const repo = await detectRepo(path || process.cwd());
-        console.log(JSON.stringify(repo, null, 2));
-      });
 
     // Install command
     this.program
@@ -111,17 +103,17 @@ export class MCPPackageCLI {
         await main();
       });
 
-    // Build command
+    // Main commands (v2 moved to first level)
     this.program
       .command("build")
       .description("Build the project using repository detection")
       .argument("[target]", "Target to build (defaults to root target)")
       .option("--path <path>", "Path to the repository (defaults to git root)")
       .action(async (target, options) => {
-        await this.handleRepositoryCommand("build", target, options.path);
+        await this.handleRepositoryCommandV2("build", target, options.path);
       });
 
-    // Dev command  
+    // Dev command
     this.program
       .command("dev")
       .description("Start development server using repository detection")
@@ -133,8 +125,8 @@ export class MCPPackageCLI {
         const rawArgs = command.args || [];
         const dashDashIndex = process.argv.indexOf('--');
         const additionalArgs = dashDashIndex !== -1 ? process.argv.slice(dashDashIndex + 1) : [];
-        
-        await this.handleRepositoryCommand("dev", target, options.path, additionalArgs);
+
+        await this.handleRepositoryCommandV2("dev", target, options.path, additionalArgs);
       });
 
     // Check command
@@ -144,7 +136,23 @@ export class MCPPackageCLI {
       .argument("[target]", "Target to check (defaults to root target)")
       .option("--path <path>", "Path to the repository (defaults to git root)")
       .action(async (target, options) => {
-        await this.handleRepositoryCommand("check", target, options.path);
+        await this.handleRepositoryCommandV2("check", target, options.path);
+      });
+
+    // Lint command
+    this.program
+      .command("lint")
+      .description("Run linting using repository detection")
+      .argument("[target]", "Target to lint (defaults to root target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .allowUnknownOption()
+      .action(async (target, options, command) => {
+        // Extract additional arguments after -- from raw args
+        const rawArgs = command.args || [];
+        const dashDashIndex = process.argv.indexOf('--');
+        const additionalArgs = dashDashIndex !== -1 ? process.argv.slice(dashDashIndex + 1) : [];
+
+        await this.handleRepositoryCommandV2("lint", target, options.path, additionalArgs);
       });
 
     // Typecheck command - alias to check
@@ -155,7 +163,7 @@ export class MCPPackageCLI {
       .argument("[target]", "Target to typecheck (defaults to root target)")
       .option("--path <path>", "Path to the repository (defaults to git root)")
       .action(async (target, options) => {
-        await this.handleRepositoryCommand("check", target, options.path);
+        await this.handleRepositoryCommandV2("check", target, options.path);
       });
 
     // Test command
@@ -165,7 +173,7 @@ export class MCPPackageCLI {
       .argument("[target]", "Target to test (defaults to current directory target)")
       .option("--path <path>", "Path to the repository (defaults to git root)")
       .action(async (target, options) => {
-        await this.handleRepositoryCommand("test", target, options.path);
+        await this.handleRepositoryCommandV2("test", target, options.path);
       });
 
     // Run command - alias to dev
@@ -175,8 +183,14 @@ export class MCPPackageCLI {
       .description("Run any package.json script for the target (alias for dev)")
       .argument("[target]", "Target to run (defaults to current directory target)")
       .option("--path <path>", "Path to the repository (defaults to git root)")
-      .action(async (target, options) => {
-        await this.handleRepositoryCommand("dev", target, options.path);
+      .allowUnknownOption()
+      .action(async (target, options, command) => {
+        // Extract additional arguments after -- from raw args
+        const rawArgs = command.args || [];
+        const dashDashIndex = process.argv.indexOf('--');
+        const additionalArgs = dashDashIndex !== -1 ? process.argv.slice(dashDashIndex + 1) : [];
+
+        await this.handleRepositoryCommandV2("dev", target, options.path, additionalArgs);
       });
 
     // Add command
@@ -188,8 +202,109 @@ export class MCPPackageCLI {
       .argument("[target]", "Target to add package to (defaults to current directory target)")
       .option("--path <path>", "Path to the repository (defaults to git root)")
       .option("--dev", "Add as development dependency")
+      .allowUnknownOption()
+      .action(async (packageName, target, options, command) => {
+        // Extract additional arguments after -- from raw args
+        const rawArgs = command.args || [];
+        const dashDashIndex = process.argv.indexOf('--');
+        const additionalArgs = dashDashIndex !== -1 ? process.argv.slice(dashDashIndex + 1) : [];
+
+        // Pass package name and dev flag in additional args
+        const actionArgs = [packageName];
+        if (options.dev) actionArgs.push("--dev");
+        actionArgs.push(...additionalArgs);
+
+        await this.handleRepositoryCommandV2("add-package", target, options.path, actionArgs);
+      });
+
+    // Remove command
+    this.program
+      .command("remove")
+      .alias("rm")
+      .description("Remove a package from the project using repository detection")
+      .argument("<package>", "Package name to remove")
+      .argument("[target]", "Target to remove package from (defaults to current directory target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .allowUnknownOption()
+      .action(async (packageName, target, options, command) => {
+        // Extract additional arguments after -- from raw args
+        const rawArgs = command.args || [];
+        const dashDashIndex = process.argv.indexOf('--');
+        const additionalArgs = dashDashIndex !== -1 ? process.argv.slice(dashDashIndex + 1) : [];
+
+        // Pass package name in additional args
+        const actionArgs = [packageName];
+        actionArgs.push(...additionalArgs);
+
+        await this.handleRepositoryCommandV2("remove-package", target, options.path, actionArgs);
+      });
+
+    // Old commands (legacy v1 system)
+    const oldCommand = this.program
+      .command("old")
+      .description("Legacy v1 commands using old repository detection");
+
+    oldCommand
+      .command("build")
+      .description("Build the project using legacy repository detection")
+      .argument("[target]", "Target to build (defaults to root target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .action(async (target, options) => {
+        await this.handleRepositoryCommand("build", target, options.path);
+      });
+
+    oldCommand
+      .command("dev")
+      .description("Start development server using legacy repository detection")
+      .argument("[target]", "Target to run in dev mode (defaults to root target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .allowUnknownOption()
+      .action(async (target, options, command) => {
+        // Extract additional arguments after -- from raw args
+        const rawArgs = command.args || [];
+        const dashDashIndex = process.argv.indexOf('--');
+        const additionalArgs = dashDashIndex !== -1 ? process.argv.slice(dashDashIndex + 1) : [];
+
+        await this.handleRepositoryCommand("dev", target, options.path, additionalArgs);
+      });
+
+    oldCommand
+      .command("check")
+      .description("Run type/lint checks using legacy repository detection")
+      .argument("[target]", "Target to check (defaults to root target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .action(async (target, options) => {
+        await this.handleRepositoryCommand("check", target, options.path);
+      });
+
+    oldCommand
+      .command("test")
+      .description("Run tests using legacy repository detection")
+      .argument("[target]", "Target to test (defaults to current directory target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .action(async (target, options) => {
+        await this.handleRepositoryCommand("test", target, options.path);
+      });
+
+    oldCommand
+      .command("add")
+      .alias("a")
+      .description("Add a package to the project using legacy repository detection")
+      .argument("<package>", "Package name to add")
+      .argument("[target]", "Target to add package to (defaults to current directory target)")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .option("--dev", "Add as development dependency")
       .action(async (packageName, target, options) => {
         await this.handleAddCommand(packageName, target, options.path, options.dev);
+      });
+
+    // Repo analysis command
+    this.program
+      .command("repo")
+      .description("Analyze repository and output JSON with all targets and info")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .action(async (options) => {
+        await this.handleRepoAnalysisV2(options.path);
       });
   }
 
@@ -343,23 +458,50 @@ export class MCPPackageCLI {
       return target;
     }
 
-    // If target is a relative path, make it relative to the current directory within the repo
-    if (!path.isAbsolute(target)) {
-      // Get current directory relative to repo root
-      const currentRelative = path.relative(workingDir, process.cwd());
-      if (currentRelative === "") {
-        // We're at repo root, so relative path is just the target
-        const normalized = `//${target}`;
-        return normalized.replace(/\/+$/, ""); // Remove trailing slashes
+    // If target is an absolute path, don't modify
+    if (path.isAbsolute(target)) {
+      return target;
+    }
+
+    // Handle relative paths
+    let cleanTarget = target;
+
+    // Strip leading ./ if present
+    if (cleanTarget.startsWith("./")) {
+      cleanTarget = cleanTarget.substring(2);
+    }
+
+    // Get current directory relative to repo root
+    const currentRelative = path.relative(workingDir, process.cwd());
+
+    let resolvedPath: string;
+    if (currentRelative === "") {
+      // We're at repo root
+      if (cleanTarget === "" || cleanTarget === ".") {
+        // Target is current directory (repo root)
+        return "//";
+      }
+      // Resolve relative path from repo root
+      resolvedPath = path.normalize(cleanTarget);
+    } else {
+      // We're in a subdirectory
+      if (cleanTarget === "" || cleanTarget === ".") {
+        // Target is current directory
+        resolvedPath = currentRelative;
       } else {
-        // Construct path relative to repo root
-        const joined = path.join(currentRelative, target);
-        const normalized = `//${joined}`;
-        return normalized.replace(/\/+$/, ""); // Remove trailing slashes
+        // Resolve relative path from current directory
+        resolvedPath = path.normalize(path.join(currentRelative, cleanTarget));
       }
     }
 
-    return target;
+    // Handle cases where path goes above repo root
+    if (resolvedPath.startsWith("..")) {
+      throw new Error(`Target path "${target}" resolves outside of repository root`);
+    }
+
+    // Convert to repository-root-relative format
+    const normalized = resolvedPath === "." ? "//" : `//${resolvedPath}`;
+    return normalized.replace(/\/+$/, ""); // Remove trailing slashes
   }
 
   private async handleRepositoryCommand(
@@ -391,11 +533,55 @@ export class MCPPackageCLI {
         additionalArgs
       };
 
-      await executeRepositoryCommand(actionType, normalizedTarget, workingDir, options);
+      await executeRepositoryCommand(actionType, targetArg, workingDir, options);
 
     } catch (error) {
       console.error(
         chalk.red(`❌ ${actionType} failed:`),
+        error instanceof Error ? error.message : String(error)
+      );
+      process.exit(1);
+    }
+  }
+
+  private async handleRepositoryCommandV2(
+    actionType: ActionType,
+    targetArg: string | undefined,
+    repoPath: string | undefined,
+    additionalArgs: string[] = []
+  ): Promise<void> {
+    try {
+      const jwt = await this.ensureAuthenticated();
+
+      const workingDir = repoPath ? path.resolve(repoPath) : this.findGitRepoRoot(process.cwd());
+      const currentDir = process.cwd()
+
+      await executeRepositoryCommandV2(workingDir, currentDir, actionType, targetArg, additionalArgs);
+
+    } catch (error) {
+      console.error(
+        chalk.red(`❌${actionType} v2 failed:`),
+        error instanceof Error ? error.message : String(error)
+      );
+      process.exit(1);
+    }
+  }
+
+  private async handleRepoAnalysisV2(
+    repoPath: string | undefined
+  ): Promise<void> {
+    try {
+      const jwt = await this.ensureAuthenticated();
+
+      const workingDir = repoPath ? path.resolve(repoPath) : this.findGitRepoRoot(process.cwd());
+
+      const repoAnalysis = await analyzeRepositoryV2(workingDir);
+
+      console.log(JSON.stringify(repoAnalysis, null, 2));
+
+    } catch (error) {
+      console.error(
+        chalk.red("❌ Repository analysis failed:"),
         error instanceof Error ? error.message : String(error)
       );
       process.exit(1);
@@ -432,7 +618,7 @@ export class MCPPackageCLI {
         }
       };
 
-      await executeAddCommand(normalizedTarget, workingDir, options);
+      await executeAddCommand(targetArg, workingDir, options);
 
     } catch (error) {
       console.error(
@@ -452,7 +638,7 @@ export class MCPPackageCLI {
       // Handle -- argument separation for dev command
       let argsToProcess = process.argv;
       const dashDashIndex = process.argv.indexOf('--');
-      
+
       if (dashDashIndex !== -1 && process.argv.includes('dev')) {
         // Remove -- and everything after it from commander parsing
         argsToProcess = process.argv.slice(0, dashDashIndex);

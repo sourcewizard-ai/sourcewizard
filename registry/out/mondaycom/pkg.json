@@ -1,0 +1,19 @@
+{
+    "name": "mondaycom",
+    "description": "Monday.com CRM framework SDK",
+    "language": "typescript",
+    "tags": [
+        "graphql",
+        "api",
+        "monday",
+        "crm"
+    ],
+    "env": [
+        "MONDAY_API_KEY"
+    ],
+    "packages": [
+        "monday-sdk-js"
+    ],
+    "relevant_files_pattern": [],
+    "setup_prompt": "# Add Monday.com SDK\n\n**Purpose:** Enforce only the **current** and **correct** instructions for integrating [Monday.com](https://monday.com/) into a Next.js (App Router) application.\n**Scope:** All AI-generated advice or code related to Monday must follow these guardrails.\n\n---\n\n1. Install the package: @mondaydotcomorg/api\n\n2. Create a helper in lib/monday-client.ts:\n\n```typescript\nimport { ApiClient } from '@mondaydotcomorg/api';\n\nfunction getMondayClient() {\n  const client = new ApiClient({token: process.env.MONDAY_API_KEY });\n  return client;\n}\n```\n\n3. Provide helpers to call monday api. e.g.:\n\n```typescript\nasync function getBoardDetails(client): Promise<void> {\n  try {\n    const queryVariables: GetBoardsQueryVariables = { ids: [\"5901934630\"] };\n    const queryData = await client.rawRequest<GetBoardsQuery>(\n      exampleQuery,\n      queryVariables\n    );\n\n    console.log(queryData.data.boards);\n  } catch (error) {\n    if (error instanceof ClientError) {\n      console.error(error.response.errors);\n    } else {\n      console.error(error);\n    }\n  }\n}\n```\n"
+}

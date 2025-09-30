@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import { tool } from "ai";
 import z from "zod";
-import { getBulkTargetData, TargetInfo, executeRepositoryCommand } from "./repository-detector";
+import { getBulkTargetData, TargetInfo, executeRepositoryCommand, executeAddCommand } from "./repository-detector";
 
 /**
  * Create a read_file tool for AI agents
@@ -461,6 +461,84 @@ export function createGetBulkTargetDataTool(
 }
 
 /**
+ * Create an add_package tool for AI agents
+ * @param cwd Current working directory for relative path resolution
+ */
+export function createAddPackageTool(cwd: string) {
+  return tool({
+    description: "Add a package/dependency to the repository using the add command",
+    parameters: z.object({
+      packageName: z
+        .string()
+        .describe("Name of the package to add"),
+      target: z
+        .string()
+        .optional()
+        .describe("Target to add the package to (defaults to root target)"),
+      isDev: z
+        .boolean()
+        .optional()
+        .describe("Whether to add as a dev dependency"),
+      useWorkspace: z
+        .boolean()
+        .optional()
+        .describe("Whether to use workspace flag (e.g., -w for pnpm workspaces)"),
+      additionalFlags: z
+        .array(z.string())
+        .optional()
+        .describe("Additional flags to pass to the add command"),
+      repoPath: z
+        .string()
+        .optional()
+        .describe("Repository path (defaults to current working directory)"),
+    }),
+    execute: async ({ packageName, target, isDev = false, useWorkspace, additionalFlags, repoPath }) => {
+      try {
+        const resolvedRepoPath = repoPath ? path.resolve(cwd, repoPath) : cwd;
+        let output = "";
+        let hasError = false;
+
+        const result = await executeAddCommand(
+          target,
+          resolvedRepoPath,
+          {
+            packageName,
+            isDev,
+            useWorkspace,
+            additionalFlags,
+            onOutput: (message: string, type: 'info' | 'error' | 'success') => {
+              output += `[${type}] ${message}\n`;
+              if (type === 'error') {
+                hasError = true;
+              }
+            }
+          }
+        );
+
+        return {
+          success: !hasError,
+          output: output.trim(),
+          target: target || "default",
+          packageName,
+          isDev,
+          repoPath: resolvedRepoPath,
+          message: hasError ? `Failed to add package ${packageName}` : `Package ${packageName} added successfully`
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          target: target || "default",
+          packageName,
+          isDev,
+          repoPath: repoPath || cwd,
+        };
+      }
+    },
+  });
+}
+
+/**
  * Create a complete set of file operation tools for AI agents
  * @param cwd Current working directory for relative path resolution
  * @param repositoryTargets Optional repository targets for the getBulkTargetData tool
@@ -478,6 +556,7 @@ export function createFileOperationTools(
     delete_file: createDeleteFileTool(cwd),
     edit_file: createEditFileTool(cwd),
     typecheck: createTypecheckTool(cwd),
+    add_package: createAddPackageTool(cwd),
   };
 
   // Only add getBulkTargetData tool if repository targets are provided
