@@ -7,50 +7,166 @@ interface PackageJsonInfo {
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  packageManager?: string;
+  workspaces?: string[] | { packages: string[] };
 }
 
-async function detectPackageManager(packagePath: string, repoPath?: string): Promise<string> {
+async function detectPackageManager(packagePath: string): Promise<string> {
+  // Define lockfiles once to avoid duplication
   const lockFiles = [
-    { file: "yarn.lock", manager: "yarn" as const },
-    { file: "pnpm-lock.yaml", manager: "pnpm" as const },
     { file: "bun.lockb", manager: "bun" as const },
+    { file: "bun.lock", manager: "bun" as const },
+    { file: "pnpm-lock.yaml", manager: "pnpm" as const },
+    { file: "yarn.lock", manager: "yarn" as const },
     { file: "package-lock.json", manager: "npm" as const },
   ];
 
-  const searchPaths = [];
+  const workspaceLockFiles = lockFiles.filter(({ manager }) =>
+    manager === "bun" || manager === "pnpm"
+  );
 
-  // If we have repoPath, check repo root first (for monorepos)
-  if (repoPath && repoPath !== packagePath) {
-    searchPaths.push(repoPath);
-  }
+  // First, find the workspace root by going up the directory tree
+  const workspaceRoot = await findWorkspaceRoot(packagePath);
 
-  // Then check the package directory
-  searchPaths.push(packagePath);
-
-  // Also check parent directories up to repo root
-  if (repoPath) {
-    let currentPath = path.dirname(packagePath);
-    while (
-      currentPath !== repoPath &&
-      currentPath !== path.dirname(currentPath)
-    ) {
-      searchPaths.push(currentPath);
-      currentPath = path.dirname(currentPath);
-    }
-  }
-
-  for (const searchPath of searchPaths) {
-    for (const { file, manager } of lockFiles) {
+  // First priority: Check all package.json files for workspace: dependencies
+  const hasWorkspaceDeps = await checkForWorkspaceDependencies(workspaceRoot);
+  if (hasWorkspaceDeps) {
+    // workspace: protocol indicates pnpm or bun, check lockfiles to determine which
+    for (const { file, manager } of workspaceLockFiles) {
       try {
-        await fs.access(path.join(searchPath, file));
+        await fs.access(path.join(workspaceRoot, file));
         return manager;
       } catch {
         continue;
       }
     }
+
+    // Found workspace: dependencies but no lockfile, default to pnpm
+    return 'pnpm';
+  }
+
+  // Second priority: Check for lockfiles in workspace root (this should override local lockfiles)
+  for (const { file, manager } of lockFiles) {
+    try {
+      await fs.access(path.join(workspaceRoot, file));
+      return manager;
+    } catch {
+      continue;
+    }
+  }
+
+  // Third priority: Check for packageManager field in workspace root package.json
+  try {
+    const packageJsonPath = path.join(workspaceRoot, 'package.json');
+    const content = await fs.readFile(packageJsonPath, 'utf-8');
+    const packageInfo: PackageJsonInfo = JSON.parse(content);
+
+    if (packageInfo.packageManager) {
+      // Extract manager name from packageManager field (e.g., "pnpm@8.0.0" -> "pnpm")
+      const manager = packageInfo.packageManager.split('@')[0];
+      if (['npm', 'yarn', 'pnpm', 'bun'].includes(manager)) {
+        return manager;
+      }
+    }
+  } catch {
+    // Continue if can't read package.json
   }
 
   return "npm";
+}
+
+async function findWorkspaceRoot(startPath: string): Promise<string> {
+  let currentPath = startPath;
+
+  // First pass: look for workspace configuration
+  while (currentPath !== path.dirname(currentPath)) {
+    // Check for pnpm-workspace.yaml
+    try {
+      await fs.access(path.join(currentPath, 'pnpm-workspace.yaml'));
+      return currentPath;
+    } catch {
+      // Continue if pnpm-workspace.yaml doesn't exist
+    }
+
+    // Check for package.json with workspaces field
+    try {
+      const packageJsonPath = path.join(currentPath, 'package.json');
+      const content = await fs.readFile(packageJsonPath, 'utf-8');
+      const packageInfo: PackageJsonInfo = JSON.parse(content);
+
+      if (packageInfo.workspaces) {
+        return currentPath;
+      }
+    } catch {
+      // Continue if can't read package.json
+    }
+
+    currentPath = path.dirname(currentPath);
+  }
+
+  // Second pass: if no workspace found, look for .git directory
+  currentPath = startPath;
+  while (currentPath !== path.dirname(currentPath)) {
+    try {
+      await fs.access(path.join(currentPath, '.git'));
+      return currentPath;
+    } catch {
+      // Continue if .git doesn't exist
+    }
+
+    currentPath = path.dirname(currentPath);
+  }
+
+  // If neither workspace nor .git found, return the start path
+  return startPath;
+}
+
+async function checkForWorkspaceDependencies(workspaceRoot: string): Promise<boolean> {
+  const packageJsonFiles = await findPackageJsonFiles(workspaceRoot);
+
+  for (const packageJsonFile of packageJsonFiles) {
+    try {
+      const content = await fs.readFile(packageJsonFile, 'utf-8');
+      const packageInfo: PackageJsonInfo = JSON.parse(content);
+      const allDeps = { ...packageInfo.dependencies, ...packageInfo.devDependencies };
+
+      const hasWorkspaceProtocol = Object.values(allDeps).some(version =>
+        typeof version === 'string' && version.startsWith('workspace:')
+      );
+
+      if (hasWorkspaceProtocol) {
+        return true; // Found workspace: dependencies
+      }
+    } catch {
+      // Continue if can't read package.json
+    }
+  }
+
+  return false; // No workspace: dependencies found
+}
+
+async function findPackageJsonFiles(dir: string): Promise<string[]> {
+  const packageJsonFiles: string[] = [];
+
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isFile() && entry.name === 'package.json') {
+        packageJsonFiles.push(fullPath);
+      } else if (entry.isDirectory() && !['node_modules', '.git', '.next', 'dist', 'build'].includes(entry.name)) {
+        // Recursively search subdirectories
+        const subPackageJsonFiles = await findPackageJsonFiles(fullPath);
+        packageJsonFiles.push(...subPackageJsonFiles);
+      }
+    }
+  } catch {
+    // Ignore errors reading directories
+  }
+
+  return packageJsonFiles;
 }
 
 function detectFramework(packageInfo: PackageJsonInfo): string | undefined {
@@ -91,7 +207,7 @@ export const javascriptDetector: PackageDetector = {
 
       const baseTarget = {
         language: detectLanguage(packageInfo),
-        packageManager: await detectPackageManager(currentPath, repoRoot),
+        packageManager: await detectPackageManager(currentPath),
         framework: detectFramework(packageInfo),
         path: normalizedPath
       };
@@ -194,7 +310,7 @@ export const javascriptDetector: PackageDetector = {
     } else {
       commands.push("npm install");
     }
-    if (target.language === "typescript") {
+    if (target.language === "typescript" && actionType !== "add-package" && actionType !== "remove-package") {
       commands.push("tsc --noEmit");
     }
 

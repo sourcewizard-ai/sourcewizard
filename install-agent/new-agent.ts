@@ -196,14 +196,38 @@ export class NewAgent {
           };
 
         case 'tool_call':
-          // LLM wants to call a tool - execute it and continue
-          const toolResult = await this.executeTool(agent_id, result.tool_name, result.data);
+          // Check if we have multiple tools to execute in parallel
+          if (result.tool_names && Array.isArray(result.tool_names) && result.tool_names.length > 1) {
+            // Execute all tools in parallel
+            const toolCallIds = Object.keys(result.data);
+            const toolPromises = toolCallIds.map(async (toolCallId) => {
+              const toolData = result.data[toolCallId];
+              const toolResult = await this.executeTool(agent_id, toolData.tool_name, toolData);
+              return { toolCallId, result: toolResult };
+            });
 
-          // Prepare tool result payload for next iteration
-          currentPayload = JSON.stringify({
-            tool_call_id: result.data.tool_call_id,
-            result: toolResult
-          });
+            const toolResults = await Promise.all(toolPromises);
+
+            // Build results record
+            const resultsRecord: Record<string, any> = {};
+            for (const { toolCallId, result: toolResult } of toolResults) {
+              resultsRecord[toolCallId] = toolResult;
+            }
+
+            // Prepare payload with all tool results
+            currentPayload = JSON.stringify({
+              tool_results: resultsRecord
+            });
+          } else {
+            // Single tool execution (existing behavior)
+            const toolResult = await this.executeTool(agent_id, result.tool_name || result.data?.tool_name, result.data);
+
+            // Prepare tool result payload for next iteration
+            currentPayload = JSON.stringify({
+              tool_call_id: result.data.tool_call_id,
+              result: toolResult
+            });
+          }
 
           // Continue to next iteration
           break;

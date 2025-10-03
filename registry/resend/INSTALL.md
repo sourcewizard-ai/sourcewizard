@@ -53,7 +53,23 @@ export function EmailTemplate({ firstName }: EmailTemplateProps) {
 }
 ```
 
-## 3. Send email using React
+## 3. Install email rendering library
+
+<CodeGroup>
+  ```bash npm
+  npm install @react-email/render
+  ```
+
+  ```bash yarn
+  yarn add @react-email/render
+  ```
+
+  ```bash pnpm
+  pnpm add @react-email/render
+  ```
+</CodeGroup>
+
+## 4. Send email using React
 
 Create an API file under `pages/api/send.ts` if you're using the [Pages Router](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) or create a route file under `app/api/send/route.ts` if you're using the [App Router](https://nextjs.org/docs/app/building-your-application/routing/router-handlers).
 
@@ -110,7 +126,7 @@ Import the React email template and send an email using the `react` parameter.
   ```
 </CodeGroup>
 
-## 4. Try it yourself
+## 5. Try it yourself
 
 <CardGroup>
   <Card title="Next.js Example (Pages Router)" icon="arrow-up-right-from-square" href="https://github.com/resend/resend-nextjs-pages-router-example">

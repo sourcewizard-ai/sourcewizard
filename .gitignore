@@ -75,6 +75,7 @@ snippets-registry.json
 # Temporary files
 tmp/
 temp/
+.temp
 
 .cursor/mcp.json
 architecture/

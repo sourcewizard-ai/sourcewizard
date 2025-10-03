@@ -5,6 +5,7 @@ import * as path from "path";
 import * as os from "os";
 import { glob } from "glob";
 import { supabase } from "../lib/supabase-client.js";
+import { PackageInsert } from "../lib/database-types.js";
 
 interface RegistryConfig {
   name: string;
@@ -25,22 +26,6 @@ interface AuthSession {
     id: string;
     email: string;
   };
-}
-
-interface PackageInsert {
-  user_id: string;
-  name: string;
-  description: string;
-  setup_prompt?: string;
-  tags: string[];
-  metadata: {
-    env?: string[];
-    packages?: string[];
-    [key: string]: any;
-  };
-  relevant_files_pattern: string[];
-  language: string;
-  staging?: boolean;
 }
 
 async function getSessionInfo(): Promise<{

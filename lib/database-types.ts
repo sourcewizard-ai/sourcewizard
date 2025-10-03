@@ -1,94 +1,271 @@
-/**
- * Database types for Supabase tables
- * Auto-generated to match the schema in supabase/schemas/
- */
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
-export interface Database {
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "12.2.3 (519615d)"
+  }
   public: {
     Tables: {
+      installation_evals: {
+        Row: {
+          created_at: string
+          id: string
+          input_tokens: number | null
+          model_response: string | null
+          output_tokens: number | null
+          package_name: string
+          prompt: string
+          repo_info: Json
+          system_prompt: string
+          tool_output: Json
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          model_response?: string | null
+          output_tokens?: number | null
+          package_name: string
+          prompt: string
+          repo_info: Json
+          system_prompt: string
+          tool_output: Json
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          model_response?: string | null
+          output_tokens?: number | null
+          package_name?: string
+          prompt?: string
+          repo_info?: Json
+          system_prompt?: string
+          tool_output?: Json
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      package_submissions: {
+        Row: {
+          created_at: string
+          description: string | null
+          documentation_link: string
+          email: string | null
+          id: string
+          is_owner: boolean | null
+          name: string
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          documentation_link: string
+          email?: string | null
+          id?: string
+          is_owner?: boolean | null
+          name: string
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          documentation_link?: string
+          email?: string | null
+          id?: string
+          is_owner?: boolean | null
+          name?: string
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       packages: {
-        Row: PackageRow;
-        Insert: PackageInsert;
-        Update: PackageUpdate;
-      };
-    };
-  };
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          language: string
+          metadata: Json | null
+          name: string
+          relevant_files_pattern: string[] | null
+          setup_prompt: string | null
+          staging: boolean
+          tags: string[] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          language: string
+          metadata?: Json | null
+          name: string
+          relevant_files_pattern?: string[] | null
+          setup_prompt?: string | null
+          staging?: boolean
+          tags?: string[] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          language?: string
+          metadata?: Json | null
+          name?: string
+          relevant_files_pattern?: string[] | null
+          setup_prompt?: string | null
+          staging?: boolean
+          tags?: string[] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      name_description: {
+        Args: { "": Database["public"]["Tables"]["packages"]["Row"] }
+        Returns: string
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
 
-export interface PackageRow {
-  id: string;
-  user_id: string;
-  name: string;
-  description: string;
-  setup_prompt: string | null;
-  tags: string[];
-  metadata: Record<string, any>;
-  relevant_files_pattern: string[];
-  language: string;
-  created_at: string;
-  updated_at: string;
-}
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-export interface PackageInsert {
-  id?: string;
-  user_id: string;
-  name: string;
-  description: string;
-  setup_prompt?: string | null;
-  tags?: string[];
-  metadata?: Record<string, any>;
-  relevant_files_pattern?: string[];
-  language: string;
-  created_at?: string;
-  updated_at?: string;
-}
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
-export interface PackageUpdate {
-  id?: string;
-  user_id?: string;
-  name?: string;
-  description?: string;
-  setup_prompt?: string | null;
-  tags?: string[];
-  metadata?: Record<string, any>;
-  relevant_files_pattern?: string[];
-  language?: string;
-  created_at?: string;
-  updated_at?: string;
-}
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
 
-// Utility types for working with packages
-export type PackageWithoutTimestamps = Omit<
-  PackageRow,
-  "created_at" | "updated_at"
->;
-export type PackageCreateInput = Omit<
-  PackageInsert,
-  "id" | "created_at" | "updated_at"
->;
-export type PackageUpdateInput = Omit<
-  PackageUpdate,
-  "id" | "user_id" | "created_at" | "updated_at"
->;
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
 
-// Search and filter types
-export interface PackageSearchFilters {
-  language?: string;
-  tags?: string[];
-  user_id?: string;
-  search_query?: string;
-}
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
 
-export interface PackageSearchOptions {
-  filters?: PackageSearchFilters;
-  limit?: number;
-  offset?: number;
-  order_by?: "created_at" | "updated_at" | "name";
-  order_direction?: "asc" | "desc";
-}
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
 
-export interface PackageSearchResult {
-  packages: PackageRow[];
-  total_count: number;
-  has_more: boolean;
+export type CompositeTypes<
+  DefaultSchemaCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends DefaultSchemaCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = DefaultSchemaCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
+  ? DatabaseWithoutInternals[DefaultSchemaCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : DefaultSchemaCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][DefaultSchemaCompositeTypeNameOrOptions]
+    : never
+
+// Convenience type aliases for the packages table
+export type PackageRow = Database["public"]["Tables"]["packages"]["Row"]
+export type PackageInsert = Database["public"]["Tables"]["packages"]["Insert"]
+export type PackageUpdate = Database["public"]["Tables"]["packages"]["Update"]

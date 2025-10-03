@@ -87,6 +87,7 @@ export const agentEventsRequest = z.object({
 });
 export const agentEventsResponse = z.object({
   tool_name: z.string().optional(),
+  tool_names: z.array(z.string()).optional(),
   message: z.string().optional(),
   action: z.enum([
     "tool_call",
