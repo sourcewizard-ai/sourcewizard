@@ -26,19 +26,7 @@ export const TargetInfoSchema = z.object({
   language: z.string(),
   version: z.string().optional(),
   framework: z.string().optional(),
-  package_manager: z.enum([
-    "npm",
-    "yarn",
-    "pnpm",
-    "bun",
-    "pip",
-    "cargo",
-    "go",
-    "maven",
-    "gradle",
-    "composer",
-    "bundle",
-  ]).optional(),
+  package_manager: z.string().optional(),
   dependency_files: z.array(z.string()).optional(),
   env_files: z.array(z.string()).optional(),
   entrypoint: z.string().optional(),
@@ -78,6 +66,27 @@ export const agentSearchRequest = z.object({
 });
 export const agentSearchResponse = z.object({
   agent_id: z.string(),
+});
+
+export const agentReuseRequest = z.object({
+  task: z.string(),
+  history: z.array(z.string()).optional(),
+  project_context: ProjectContextSchema,
+});
+export const agentReuseResponse = z.object({
+  agent_id: z.string(),
+});
+
+// Reuse result schema - structured output for code reusability findings
+export const ReuseResultSchema = z.object({
+  name: z.string().describe("Name of the reusable code/module/function found"),
+  description: z.string().describe("Description of what the code does and how it can be reused"),
+  files: z.array(z.string()).describe("Array of file paths where the code is located"),
+  language: z.string().describe("Programming language of the code"),
+  target: z.string().optional().describe("Target identifier (e.g., '//frontend:webapp') where the code belongs"),
+  is_external: z.boolean().describe("Whether this is an external library/package (true) or internal codebase code (false)"),
+  tags: z.array(z.string()).describe("Relevant tags for categorization (e.g., 'authentication', 'validation', 'util')"),
+  reuse_method: z.enum(["copy", "import", "install"]).describe("Best method to reuse this code: 'copy' for copying code snippets, 'import' for importing existing modules/functions, 'install' for external packages"),
 });
 
 export const agentEventsRequest = z.object({

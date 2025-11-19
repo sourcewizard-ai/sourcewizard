@@ -2,7 +2,8 @@ import express from "express";
 import cors from "cors";
 
 export interface ProgressUpdate {
-  installationId?: string;
+  operationId?: string;
+  installationId?: string; // Legacy field for backwards compatibility
   text?: string;
   toolCalls?: any[];
   toolResults?: any[];
@@ -10,6 +11,7 @@ export interface ProgressUpdate {
   usage?: any;
   stage?: string;
   description?: string;
+  result?: any;
   // Legacy fields for backwards compatibility
   step?: number;
   maxSteps?: number;

@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS packages (
     user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     name text NOT NULL,
     description text NOT NULL,
-    setup_prompt text,
+    setup_prompt jsonb,
     tags text[] DEFAULT '{}',
     metadata jsonb DEFAULT '{}',
     relevant_files_pattern text[] DEFAULT '{}',
@@ -12,12 +12,12 @@ CREATE TABLE IF NOT EXISTS packages (
     staging boolean DEFAULT false NOT NULL,
     created_at timestamptz DEFAULT now() NOT NULL,
     updated_at timestamptz DEFAULT now() NOT NULL,
-    
+
     -- Constraints
     CONSTRAINT packages_name_not_empty CHECK (char_length(name) > 0),
     CONSTRAINT packages_description_not_empty CHECK (char_length(description) > 0),
     CONSTRAINT packages_language_not_empty CHECK (char_length(language) > 0),
-    
+
     -- Unique constraint for user_id + name combination
     UNIQUE(user_id, name)
 );

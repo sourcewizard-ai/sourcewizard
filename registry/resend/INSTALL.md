@@ -1,20 +1,5 @@
 # Send emails with Next.js
 
-> Learn how to send your first email using Next.js and the Resend Node.js SDK.
-
-## Prerequisites
-
-To get the most out of this guide, you'll need to:
-
-* [Create an API key](https://resend.com/api-keys)
-* [Verify your domain](https://resend.com/domains)
-
-Prefer watching a video? Check out our video walkthrough below.
-
-<div className="aspect-video">
-  <iframe width="100%" height="100%" src="https://www.youtube.com/embed/UqQxfpTQBaE" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen />
-</div>
-
 ## 1. Install
 
 Get the Resend Node.js SDK.
@@ -30,6 +15,22 @@ Get the Resend Node.js SDK.
 
   ```bash pnpm
   pnpm add resend
+  ```
+</CodeGroup>
+
+Install email rendering library
+
+<CodeGroup>
+  ```bash npm
+  npm install @react-email/render
+  ```
+
+  ```bash yarn
+  yarn add @react-email/render
+  ```
+
+  ```bash pnpm
+  pnpm add @react-email/render
   ```
 </CodeGroup>
 
@@ -53,23 +54,7 @@ export function EmailTemplate({ firstName }: EmailTemplateProps) {
 }
 ```
 
-## 3. Install email rendering library
-
-<CodeGroup>
-  ```bash npm
-  npm install @react-email/render
-  ```
-
-  ```bash yarn
-  yarn add @react-email/render
-  ```
-
-  ```bash pnpm
-  pnpm add @react-email/render
-  ```
-</CodeGroup>
-
-## 4. Send email using React
+## 3. Send email using React
 
 Create an API file under `pages/api/send.ts` if you're using the [Pages Router](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) or create a route file under `app/api/send/route.ts` if you're using the [App Router](https://nextjs.org/docs/app/building-your-application/routing/router-handlers).
 
@@ -125,16 +110,3 @@ Import the React email template and send an email using the `react` parameter.
   }
   ```
 </CodeGroup>
-
-## 5. Try it yourself
-
-<CardGroup>
-  <Card title="Next.js Example (Pages Router)" icon="arrow-up-right-from-square" href="https://github.com/resend/resend-nextjs-pages-router-example">
-    See the full source code.
-  </Card>
-
-  <Card title="Next.js Example (App Router)" icon="arrow-up-right-from-square" href="https://github.com/resend/resend-nextjs-app-router-example">
-    See the full source code.
-  </Card>
-</CardGroup>
-

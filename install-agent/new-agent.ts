@@ -1,5 +1,4 @@
-import { getBulkTargetData, ProjectContext } from "./repository-detector.js";
-import { executeRepositoryCommandV2 } from "./repodetect/index.js";
+import { getBulkTargetData, executeRepositoryCommandV2, ProjectContext } from "../repodetect/index.js";
 import { toolDefinitions } from "./tools-schema.js";
 import * as path from "path";
 import { promises as fsp } from "fs";
@@ -14,6 +13,16 @@ export interface NewAgentOptions {
   onStepFinish?: (stepData: any) => void;
 }
 
+export interface TodoItem {
+  task: string;
+  completed: boolean;
+}
+
+export interface TodoResult {
+  todos: TodoItem[];
+  success: boolean;
+}
+
 export interface NewAgentResult {
   text: string;
   toolCalls?: any[];
@@ -25,6 +34,9 @@ export interface NewAgentResult {
   packages?: any[];
   query?: string;
   totalAvailable?: number;
+  // Reuse result fields
+  results?: any[];
+  task?: string;
   // Install stage fields
   stage?: string;
   description?: string;
@@ -40,6 +52,7 @@ export class NewAgent {
   private jwt?: string;
   private onStepFinish?: (stepData: any) => void;
   private readFilesByAgent: Map<string, Set<string>> = new Map();
+  private todos: TodoItem[] = [];
 
   constructor(options: NewAgentOptions) {
     this.cwd = options.cwd;
@@ -125,6 +138,53 @@ export class NewAgent {
     return this.runConversation(agent_id);
   }
 
+  async checkCodeReusability(task: string, history?: string[]): Promise<NewAgentResult> {
+    // Add bulk target data to project context
+    const bulkTargetData = await getBulkTargetData(
+      this.projectContext.targets,
+      this.cwd
+    );
+    this.projectContext.target_dependencies = bulkTargetData;
+
+    // Create initial todos for all targets in project context
+    this.todos = [];
+    if (this.projectContext.targets) {
+      const targetNames = Object.keys(this.projectContext.targets);
+      for (const targetName of targetNames) {
+        this.todos.push({
+          task: `Check target ${targetName} for relevant code`,
+          completed: false
+        });
+      }
+    }
+    // Add a todo for checking external dependencies
+    this.todos.push({
+      task: 'Search external dependencies',
+      completed: false
+    });
+
+    // Step 1: Create reuse agent run
+    const reuseResponse = await fetch(`${this.serverUrl}/api/agent/reuse`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({
+        task,
+        history,
+        project_context: this.projectContext
+      })
+    });
+
+    if (!reuseResponse.ok) {
+      const errorText = await reuseResponse.text();
+      throw new Error(`Failed to create reuse agent run: ${reuseResponse.statusText} - ${errorText}`);
+    }
+
+    const { agent_id } = await reuseResponse.json();
+
+    // Step 2: Start the conversation
+    return this.runConversation(agent_id);
+  }
+
   private async runConversation(agent_id: string, payload?: string): Promise<NewAgentResult> {
     let currentPayload = payload;
     const maxIterations = 50; // Prevent infinite loops
@@ -173,6 +233,12 @@ export class NewAgent {
           stepData.totalAvailable = result.data.total_available;
         }
 
+        // For reuse operations, extract results data
+        if (result.data?.results) {
+          stepData.results = result.data.results;
+          stepData.task = result.data.task;
+        }
+
         this.onStepFinish(stepData);
       }
 
@@ -191,6 +257,8 @@ export class NewAgent {
             packages: result.data?.packages,
             query: result.data?.query,
             totalAvailable: result.data?.total_available,
+            results: result.data?.results,
+            task: result.data?.task,
             stage: result.data?.stage,
             description: result.data?.description
           };
@@ -198,19 +266,76 @@ export class NewAgent {
         case 'tool_call':
           // Check if we have multiple tools to execute in parallel
           if (result.tool_names && Array.isArray(result.tool_names) && result.tool_names.length > 1) {
-            // Execute all tools in parallel
             const toolCallIds = Object.keys(result.data);
-            const toolPromises = toolCallIds.map(async (toolCallId) => {
+
+            // Group add_package calls together
+            const addPackageCalls: Array<{ toolCallId: string; toolData: any }> = [];
+            const otherCalls: Array<{ toolCallId: string; toolData: any }> = [];
+
+            for (const toolCallId of toolCallIds) {
               const toolData = result.data[toolCallId];
+              if (toolData.tool_name === 'add_package') {
+                addPackageCalls.push({ toolCallId, toolData });
+              } else {
+                otherCalls.push({ toolCallId, toolData });
+              }
+            }
+
+            const resultsRecord: Record<string, any> = {};
+
+            // Handle grouped add_package calls
+            if (addPackageCalls.length > 1) {
+              // Extract packages and common parameters from all add_package calls
+              const packages: string[] = [];
+              let commonTarget: string | undefined;
+              let commonIsDev: boolean | undefined;
+              let commonUseWorkspace: boolean | undefined;
+              let commonAdditionalFlags: string[] | undefined;
+              let commonRepoPath: string | undefined;
+
+              for (const { toolData } of addPackageCalls) {
+                const { tool_call_id, packageName, target, isDev, useWorkspace, additionalFlags, repoPath } = toolData;
+                packages.push(packageName);
+
+                // Use first call's parameters as common parameters
+                if (commonTarget === undefined) commonTarget = target;
+                if (commonIsDev === undefined) commonIsDev = isDev;
+                if (commonUseWorkspace === undefined) commonUseWorkspace = useWorkspace;
+                if (commonAdditionalFlags === undefined) commonAdditionalFlags = additionalFlags;
+                if (commonRepoPath === undefined) commonRepoPath = repoPath;
+              }
+
+              // Execute grouped add_package call
+              const groupedResult = await this.addMultiplePackages(
+                packages,
+                commonTarget,
+                commonIsDev,
+                commonUseWorkspace,
+                commonAdditionalFlags,
+                commonRepoPath
+              );
+
+              // Assign the same result to all add_package tool calls
+              for (const { toolCallId } of addPackageCalls) {
+                resultsRecord[toolCallId] = groupedResult;
+              }
+            } else if (addPackageCalls.length === 1) {
+              // Single add_package call
+              const { toolCallId, toolData } = addPackageCalls[0];
+              const toolResult = await this.executeTool(agent_id, toolData.tool_name, toolData);
+              resultsRecord[toolCallId] = toolResult;
+            }
+
+            // Execute other tools in parallel
+            const otherPromises = otherCalls.map(async ({ toolCallId, toolData }) => {
               const toolResult = await this.executeTool(agent_id, toolData.tool_name, toolData);
               return { toolCallId, result: toolResult };
             });
 
-            const toolResults = await Promise.all(toolPromises);
+            const otherResults = await Promise.all(otherPromises);
 
-            // Build results record
-            const resultsRecord: Record<string, any> = {};
-            for (const { toolCallId, result: toolResult } of toolResults) {
+            // Add other tool results
+            for (const { toolCallId, result: toolResult } of otherResults) {
               resultsRecord[toolCallId] = toolResult;
             }
 
@@ -284,7 +409,8 @@ export class NewAgent {
   }
 
   private async executeTool(agentId: string, toolName: string, args: any): Promise<any> {
-    console.log(`Executing tool: ${toolName}`, args);
+    // Tool execution is now shown via onStepFinish callback in CLI
+    // console.log(`Executing tool: ${toolName}`, args);
 
     // Remove tool_call_id from args as it's not part of the tool parameters
     const { tool_call_id, ...toolArgs } = args;
@@ -341,6 +467,12 @@ export class NewAgent {
       case 'search_file':
         return this.searchFile(agentId, toolArgs.path, toolArgs.startLine, toolArgs.endLine, toolArgs.pattern, toolArgs.ignoreCase, toolArgs.includeLineNumbers);
 
+      case 'todo_read':
+        return this.todoRead();
+
+      case 'todo_write':
+        return this.todoWrite(toolArgs.todos);
+
       default:
         // This should never be reached due to validation above
         throw new Error(`Unhandled tool: ${toolName}`);
@@ -351,7 +483,7 @@ export class NewAgent {
   private async readFile(agentId: string, filePath: string): Promise<any> {
     try {
       const absolutePath = path.resolve(this.cwd, filePath);
-      const content = await fsp.readFile(absolutePath, 'utf-8');
+      let content = await fsp.readFile(absolutePath, 'utf-8');
 
       // Check if file has more than 3000 lines
       const lines = content.split('\n');
@@ -361,6 +493,12 @@ export class NewAgent {
           error: 'File is too large, use search_file tool or grep',
           success: false
         };
+      }
+
+      // Mask .env file contents
+      const fileName = path.basename(filePath);
+      if (fileName === '.env' || fileName.startsWith('.env.')) {
+        content = this.maskEnvFileContent(content);
       }
 
       // Track that this file has been read in this agent session
@@ -381,6 +519,28 @@ export class NewAgent {
         success: false
       };
     }
+  }
+
+  private maskEnvFileContent(content: string): string {
+    const lines = content.split('\n');
+    const maskedLines = lines.map(line => {
+      // Skip empty lines and comments
+      if (!line.trim() || line.trim().startsWith('#')) {
+        return line;
+      }
+
+      // Parse environment variable line
+      const match = line.match(/^([^=]+)=(.*)$/);
+      if (match) {
+        const varName = match[1].trim();
+        const varValue = match[2].trim();
+        return `${varName}=<length ${varValue.length}>`;
+      }
+
+      return line;
+    });
+
+    return maskedLines.join('\n');
   }
 
   private async writeFile(filePath: string, content: string): Promise<any> {
@@ -978,6 +1138,72 @@ export class NewAgent {
     }
   }
 
+  private async addMultiplePackages(
+    packageNames: string[],
+    target?: string,
+    isDev?: boolean,
+    useWorkspace?: boolean,
+    additionalFlags?: string[],
+    repoPath?: string
+  ): Promise<any> {
+    const resolvedRepoPath = repoPath ? path.resolve(this.cwd, repoPath) : this.cwd;
+    let output = "";
+    let hasError = false;
+
+    try {
+      // Prepare additional arguments for V2 command with all packages
+      const actionArgs = [...packageNames];
+      if (isDev) actionArgs.push("--dev");
+      if (additionalFlags) actionArgs.push(...additionalFlags);
+
+      // Use executeRepositoryCommandV2 for package addition
+      const results = await executeRepositoryCommandV2(
+        resolvedRepoPath,
+        resolvedRepoPath,
+        "add-package",
+        target,
+        actionArgs
+      );
+
+      // Process results to extract output
+      for (const result of results) {
+        if (result.stdout) {
+          output += result.stdout + "\n";
+        }
+        if (result.stderr) {
+          output += result.stderr + "\n";
+        }
+        if (result.exitCode !== 0) {
+          hasError = true;
+        }
+      }
+
+      return {
+        success: !hasError,
+        output: output.trim() || "No output captured",
+        target: target || "default",
+        packageNames,
+        isDev,
+        useWorkspace,
+        additionalFlags,
+        repoPath: resolvedRepoPath,
+        message: hasError ? `Failed to add packages ${packageNames.join(', ')}` : `Packages ${packageNames.join(', ')} added successfully`
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        output: output.trim(),
+        target: target || "default",
+        packageNames,
+        isDev,
+        useWorkspace,
+        additionalFlags,
+        repoPath: repoPath || this.cwd,
+      };
+    }
+  }
+
   private async addPackage(
     packageName: string,
     target?: string,
@@ -1042,5 +1268,20 @@ export class NewAgent {
         repoPath: repoPath || this.cwd,
       };
     }
+  }
+
+  private todoRead(): TodoResult {
+    return {
+      todos: this.todos,
+      success: true
+    };
+  }
+
+  private todoWrite(todos: TodoItem[]): TodoResult {
+    this.todos = todos;
+    return {
+      todos: this.todos,
+      success: true
+    };
   }
 }

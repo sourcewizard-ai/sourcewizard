@@ -1,6 +1,4 @@
-import { detectRepo } from "../install-agent/repository-detector.js";
 import { NewAgent } from "../install-agent/new-agent.js";
-import { ProgressServer } from "./progress-server.js";
 import { Logger } from "../lib/logger.js";
 import React from 'react';
 import { render } from 'ink';
@@ -8,7 +6,8 @@ import InstallationSelector from './components/InstallationSelector.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { analyzeRepositoryV2 } from "../install-agent/repodetect/index.js";
+import { analyzeRepositoryV2 } from "../repodetect/index.js";
+import ora from 'ora';
 
 export interface InstallationInfo {
   id: string;
@@ -69,6 +68,188 @@ export async function search(query: string, path: string, jwt?: string) {
   return result;
 }
 
+export async function reuse(task: string, path: string, jwt?: string, verbose: boolean = false) {
+  const repo = await analyzeRepositoryV2(path);
+
+  const spinner = ora({
+    text: 'Analyzing repository...',
+    spinner: 'dots',
+    discardStdin: false
+  }).start();
+
+  // Handle Ctrl+C gracefully
+  const handleSigInt = () => {
+    spinner.stop();
+    console.log('\n\nOperation cancelled by user');
+    process.exit(130);
+  };
+  process.on('SIGINT', handleSigInt);
+
+  try {
+    const agent = new NewAgent({
+      cwd: path,
+      projectContext: repo,
+      serverUrl: process.env.SOURCEWIZARD_SERVER_URL || (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sourcewizard.ai"),
+      jwt: jwt,
+      apiKey: process.env.SOURCEWIZARD_API_KEY,
+      onStepFinish: (stepData) => {
+        // Handle reuse progress updates
+        if (stepData.toolCalls && stepData.toolCalls.length > 0) {
+          // Tool is being called
+          const toolCall = stepData.toolCalls[0];
+          const toolName = toolCall.toolName || toolCall.args?.tool_name;
+
+          // Use stage description if available (more user-friendly), otherwise generate from tool name
+          let toolDescription = stepData.description;
+
+          if (!toolDescription && toolName) {
+            toolDescription = getToolDescription(toolName, toolCall.args);
+          }
+
+          if (!toolDescription) {
+            toolDescription = 'Processing...';
+          }
+
+          if (verbose) {
+            spinner.info(toolDescription);
+            spinner.start('Processing...');
+          } else {
+            spinner.text = toolDescription;
+          }
+        } else if (stepData.text && !stepData.results) {
+          // Text message from agent
+          if (verbose) {
+            spinner.info(stepData.text);
+            spinner.start('Thinking...');
+          }
+        }
+      }
+    });
+
+    const result = await agent.checkCodeReusability(task);
+    spinner.stop();
+
+    // Display structured results if we have them
+    if (result.results) {
+      renderReuseResults(result.results, result.task || task);
+    } else if (result.text) {
+      // Fallback to text display if no structured results
+      console.log(`\n${result.text}\n`);
+    }
+
+    return result;
+  } finally {
+    // Clean up signal handler
+    process.off('SIGINT', handleSigInt);
+    spinner.stop();
+  }
+}
+
+
+function getToolDescription(toolName: string, args: any): string {
+  switch (toolName) {
+    case 'read_file':
+      return `Reading file ${args?.path || ''}`;
+    case 'list_directory':
+    case 'ls':
+      return `Listing directory ${args?.path || ''}`;
+    case 'write_file':
+      return `Writing file ${args?.path || ''}`;
+    case 'create_file':
+      return `Creating file ${args?.path || ''}`;
+    case 'edit_file':
+      return `Editing file ${args?.path || ''}`;
+    case 'delete_file':
+      return `Deleting file ${args?.path || ''}`;
+    case 'bash':
+      return `Running command: ${args?.command || ''}`;
+    case 'glob':
+      return `Searching files: ${args?.pattern || ''}`;
+    case 'grep':
+      return `Searching for: ${args?.pattern || ''}`;
+    case 'search_file':
+      return `Searching in: ${args?.path || ''}`;
+    case 'get_bulk_target_data':
+      return 'Analyzing project targets';
+    case 'typecheck':
+      return `Type checking ${args?.target || 'project'}`;
+    case 'add_package':
+      return `Adding package: ${args?.packageName || ''}`;
+    default:
+      return `Executing ${toolName}`;
+  }
+}
+
+function renderReuseResults(results: any[], task: string) {
+  console.log(`\nReuse Results for "${task}":`);
+  console.log(`Found ${results.length} reusable code option${results.length !== 1 ? 's' : ''}\n`);
+
+  if (results.length === 0) {
+    console.log("No existing code found that matches your requirements.");
+    console.log("You may need to implement new code for this functionality.\n");
+    return;
+  }
+
+  results.forEach((item, index) => {
+    // Choose text based on reuse method
+    let methodText = '';
+
+    switch (item.reuse_method) {
+      case 'import':
+        methodText = 'Import';
+        break;
+      case 'install':
+        methodText = 'Install';
+        break;
+      case 'copy':
+        methodText = 'Copy';
+        break;
+    }
+
+    const displayName = methodText ? `${item.name} [${methodText}]` : item.name;
+    console.log(`${index + 1}. ${displayName}`);
+
+    if (item.description) {
+      console.log(`   ${item.description}`);
+    }
+
+    if (item.reuse_method) {
+      console.log(`   Method: ${methodText} - ${getReuseMethodDescription(item.reuse_method)}`);
+    }
+
+    if (item.language) {
+      console.log(`   Language: ${item.language}`);
+    }
+
+    if (item.files && item.files.length > 0) {
+      console.log(`   Files: ${item.files.join(', ')}`);
+    }
+
+    if (item.target) {
+      console.log(`   Target: ${item.target}`);
+    }
+
+    if (item.tags && item.tags.length > 0) {
+      console.log(`   Tags: ${item.tags.join(', ')}`);
+    }
+
+    console.log('');
+  });
+}
+
+function getReuseMethodDescription(method: string): string {
+  switch (method) {
+    case 'import':
+      return 'Add import statement (minimal changes)';
+    case 'install':
+      return 'Install package first, then import';
+    case 'copy':
+      return 'Copy code snippet to your file';
+    default:
+      return 'Reuse this code';
+  }
+}
+
 function renderSearchResults(packages: any[], query: string, totalAvailable: number) {
   console.log(`\n🔍 Search Results for "${query}":`);
   console.log(`Found ${packages.length} recommended packages (${totalAvailable} total available)\n`);
@@ -106,7 +287,7 @@ export async function install(
   onStepFinish: (step: any) => void,
   jwt?: string
 ) {
-  const repo = await detectRepo(path);
+  const repo = await analyzeRepositoryV2(path);
 
   const agent = new NewAgent({
     cwd: path,
@@ -219,17 +400,6 @@ async function discoverInstallations(): Promise<DiscoveredInstallation[]> {
   } catch (error) {
     return [];
   }
-}
-
-async function discoverProgressPort(): Promise<number | null> {
-  const installations = await discoverInstallations();
-
-  if (installations.length === 0) {
-    return null;
-  }
-
-  // Return the port of the most recent installation
-  return installations[0].mcpMetadata.port;
 }
 
 export async function listInstallations(): Promise<DiscoveredInstallation[]> {

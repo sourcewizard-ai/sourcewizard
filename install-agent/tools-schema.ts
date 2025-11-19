@@ -183,4 +183,21 @@ export const toolDefinitions = {
         .describe("Whether to include line numbers in output (default: true)"),
     }),
   },
+  todo_read: {
+    description: "Read the current todo list to see what tasks need to be done. Returns an object with {todos: TodoItem[], success: boolean}",
+    parameters: z.object({}),
+  },
+  todo_write: {
+    description: "Write/update the todo list with tasks that need to be completed. Use this to plan your work and track progress. Returns an object with {todos: TodoItem[], success: boolean}",
+    parameters: z.object({
+      todos: z
+        .array(
+          z.object({
+            task: z.string().describe("Description of the task to complete"),
+            completed: z.boolean().describe("Whether the task is completed"),
+          })
+        )
+        .describe("Array of todo items"),
+    }),
+  },
 };

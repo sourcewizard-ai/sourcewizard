@@ -2,7 +2,11 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import { executeCommand, CommandResult } from "./util.js";
 import { Target, detectPackages, shouldSkipDirectory, findDetectorForTarget, ActionType } from "./package.js";
-import { ProjectContext, TargetInfo } from "../repository-detector.js";
+import { RepositoryAction, RepositoryActions, ProjectContext, TargetInfo, BulkTargetData } from "./types.js";
+
+export * from "./types.js";
+
+export { getBulkTargetData } from "./target-data.js";
 
 // Re-export ActionType so it can be used by consumers
 export type { ActionType };
@@ -208,6 +212,22 @@ export async function analyzeRepositoryV2(workingDir: string): Promise<ProjectCo
   for (const target of targets) {
     const targetKey = target.path === "//" ? `:${target.name}` : `${target.path.substring(2)}:${target.name}`;
 
+    // Determine dependency files based on language
+    const dependencyFiles: string[] = [];
+    const targetDir = target.path === "//" ? "" : target.path.substring(2);
+
+    if (target.language === "javascript" || target.language === "typescript") {
+      dependencyFiles.push(targetDir ? `${targetDir}/package.json` : "package.json");
+    } else if (target.language === "python") {
+      dependencyFiles.push(targetDir ? `${targetDir}/requirements.txt` : "requirements.txt");
+    } else if (target.language === "go") {
+      dependencyFiles.push(targetDir ? `${targetDir}/go.mod` : "go.mod");
+    } else if (target.language === "rust") {
+      dependencyFiles.push(targetDir ? `${targetDir}/Cargo.toml` : "Cargo.toml");
+    } else if (target.language === "php") {
+      dependencyFiles.push(targetDir ? `${targetDir}/composer.json` : "composer.json");
+    }
+
     convertedTargets[targetKey] = {
       name: target.name,
       path: target.path,
@@ -215,7 +235,8 @@ export async function analyzeRepositoryV2(workingDir: string): Promise<ProjectCo
       version: undefined, // Not available in Target interface
       framework: target.framework,
       package_manager: target.packageManager as TargetInfo["package_manager"],
-      // Don't set dependency_files and env_files
+      dependency_files: dependencyFiles.length > 0 ? dependencyFiles : undefined,
+      env_files: undefined, // TODO: Implement env file detection if needed
       target_type: "package", // Default to package type
       internal_dependencies: undefined, // Not available in Target interface
       // Deliberately omit actions field

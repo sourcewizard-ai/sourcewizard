@@ -1,5 +1,5 @@
 import { NewAgent } from '../install-agent/new-agent.js';
-import { ProjectContext } from '../install-agent/repository-detector.js';
+import { ProjectContext } from '../repodetect/index.js';
 
 describe('NewAgent tool validation', () => {
   let agent: NewAgent;
@@ -20,90 +20,90 @@ describe('NewAgent tool validation', () => {
   describe('executeTool validation', () => {
     it('should validate read_file arguments correctly', async () => {
       const validArgs = { path: 'test.txt', tool_call_id: 'call_123' };
-      
+
       // Mock the readFile method to avoid actual file operations
       const readFileSpy = jest.spyOn(agent as any, 'readFile').mockResolvedValue({ success: true });
-      
+
       await (agent as any).executeTool('read_file', validArgs);
-      
+
       expect(readFileSpy).toHaveBeenCalledWith('test.txt');
     });
 
     it('should reject read_file with missing path', async () => {
       const invalidArgs = { tool_call_id: 'call_123' };
-      
+
       await expect((agent as any).executeTool('read_file', invalidArgs))
         .rejects.toThrow('Invalid arguments for tool read_file');
     });
 
     it('should reject read_file with invalid path type', async () => {
       const invalidArgs = { path: 123, tool_call_id: 'call_123' };
-      
+
       await expect((agent as any).executeTool('read_file', invalidArgs))
         .rejects.toThrow('Invalid arguments for tool read_file');
     });
 
     it('should validate write_file arguments correctly', async () => {
       const validArgs = { path: 'test.txt', content: 'Hello World', tool_call_id: 'call_123' };
-      
+
       const writeFileSpy = jest.spyOn(agent as any, 'writeFile').mockResolvedValue({ success: true });
-      
+
       await (agent as any).executeTool('write_file', validArgs);
-      
+
       expect(writeFileSpy).toHaveBeenCalledWith('test.txt', 'Hello World');
     });
 
     it('should reject write_file with missing content', async () => {
       const invalidArgs = { path: 'test.txt', tool_call_id: 'call_123' };
-      
+
       await expect((agent as any).executeTool('write_file', invalidArgs))
         .rejects.toThrow('Invalid arguments for tool write_file');
     });
 
     it('should validate list_directory with optional include_hidden', async () => {
       const validArgs = { path: '.', include_hidden: true, tool_call_id: 'call_123' };
-      
+
       const listDirSpy = jest.spyOn(agent as any, 'listDirectory').mockResolvedValue({ success: true });
-      
+
       await (agent as any).executeTool('list_directory', validArgs);
-      
+
       expect(listDirSpy).toHaveBeenCalledWith('.', true);
     });
 
     it('should validate list_directory without optional include_hidden', async () => {
       const validArgs = { path: '.', tool_call_id: 'call_123' };
-      
+
       const listDirSpy = jest.spyOn(agent as any, 'listDirectory').mockResolvedValue({ success: true });
-      
+
       await (agent as any).executeTool('list_directory', validArgs);
-      
+
       expect(listDirSpy).toHaveBeenCalledWith('.', undefined);
     });
 
     it('should reject unknown tool', async () => {
       const args = { some: 'arg', tool_call_id: 'call_123' };
-      
+
       await expect((agent as any).executeTool('unknown_tool', args))
         .rejects.toThrow('Unknown tool: unknown_tool');
     });
 
     it('should validate get_bulk_target_data with string targetNames', async () => {
       const validArgs = { targetNames: 'target1', tool_call_id: 'call_123' };
-      
+
       const bulkDataSpy = jest.spyOn(agent as any, 'getBulkTargetData').mockResolvedValue({ success: true });
-      
+
       await (agent as any).executeTool('get_bulk_target_data', validArgs);
-      
+
       expect(bulkDataSpy).toHaveBeenCalledWith('target1', undefined);
     });
 
     it('should validate get_bulk_target_data with array targetNames', async () => {
       const validArgs = { targetNames: ['target1', 'target2'], repoPath: '/repo', tool_call_id: 'call_123' };
-      
+
       const bulkDataSpy = jest.spyOn(agent as any, 'getBulkTargetData').mockResolvedValue({ success: true });
-      
+
       await (agent as any).executeTool('get_bulk_target_data', validArgs);
-      
+
       expect(bulkDataSpy).toHaveBeenCalledWith(['target1', 'target2'], '/repo');
     });
   });

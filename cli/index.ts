@@ -5,11 +5,11 @@ import chalk from "chalk";
 import { CLIAuth } from "../lib/cli-web-auth/index.js";
 import { renderInstall, renderMCPStatus } from "./install";
 import { supabase } from "../lib/supabase-client.js";
-import { install, search } from "./agent.js";
-import { detectRepo, executeRepositoryCommand, executeAddCommand, ExecuteCommandOptions, ExecuteAddCommandOptions } from "../install-agent/repository-detector.js";
-import { executeRepositoryCommandV2, analyzeRepositoryV2, ActionType } from "../install-agent/repodetect/index.js";
+import { install, search, reuse } from "./agent.js";
+import { executeRepositoryCommandV2, analyzeRepositoryV2, ActionType } from "../repodetect/index.js";
 import path from "path";
 import fs from "fs";
+
 
 export class MCPPackageCLI {
   private program: Command;
@@ -22,13 +22,63 @@ export class MCPPackageCLI {
     this.setupCommands();
   }
 
+  public async doInstall(name: string, headless: boolean = false) {
+    const jwt = await this.ensureAuthenticated();
+
+    if (headless || process.env.CI || !process.stdin.isTTY) {
+      // Headless mode - run without Ink UI
+      await this.runHeadlessInstall(name, jwt);
+    } else {
+      // Interactive mode with Ink UI
+      renderInstall(name, jwt);
+    }
+  }
+
+  private async runHeadlessInstall(name: string, jwt?: string): Promise<void> {
+    console.log(`SourceWizard Setup`);
+    console.log(`Installing ${name}...`);
+
+    // Handle Ctrl+C gracefully
+    let isInstalling = true;
+    const sigintHandler = () => {
+      if (isInstalling) {
+        console.log('\n\nInstallation interrupted by user');
+        process.exit(130); // Standard exit code for SIGINT
+      }
+    };
+    process.on('SIGINT', sigintHandler);
+
+    try {
+      await install(
+        name,
+        process.cwd(),
+        (step: any) => {
+          if (step.text) {
+            console.log(`  ${step.text}`);
+          }
+        },
+        jwt
+      );
+
+      isInstalling = false;
+      process.off('SIGINT', sigintHandler);
+      console.log(`✓ Successfully installed ${name}`);
+      process.exit(0);
+    } catch (error: any) {
+      isInstalling = false;
+      process.off('SIGINT', sigintHandler);
+      console.error(`✗ Installation failed: ${error.message}`);
+      process.exit(1);
+    }
+  }
+
   private setupCommands(): void {
     this.program
       .name("sourcewizard")
       .description(
-        "SourceWizard - Intelligent package and code snippet management"
+        "SourceWizard - AI Setup Agent"
       )
-      .version("1.0.0");
+      .version("0.3.4");
 
     // Authentication commands
     this.program
@@ -71,6 +121,19 @@ export class MCPPackageCLI {
         search(query, path || process.cwd(), jwt);
       });
 
+    // Reuse command - find existing code in codebase
+    this.program
+      .command("reuse")
+      .alias("find-code")
+      .description("Find existing code in the codebase that can be reused for a task")
+      .argument("<task>", "Description of the functionality, feature, or problem to solve")
+      .option("--path <path>", "Path to the repository (defaults to git root)")
+      .option("-v, --verbose", "Show detailed tool execution logs")
+      .action(async (task, options) => {
+        const jwt = await this.ensureAuthenticated();
+        const repoPath = options.path ? path.resolve(options.path) : this.findGitRepoRoot(process.cwd());
+        await reuse(task, repoPath, jwt, options.verbose);
+      });
 
     // Install command
     this.program
@@ -78,10 +141,9 @@ export class MCPPackageCLI {
       .alias("i")
       .description("Install a package or code snippet with AI guidance")
       .argument("[name]", "Package or snippet name to install")
+      .option("--headless", "Run in headless mode without interactive UI")
       .action(async (name: string | undefined, options: any) => {
-        const jwt = await this.ensureAuthenticated();
-        renderInstall(name, jwt);
-        // install(name, process.cwd());
+        await this.doInstall(name, options.headless);
       });
 
     // Status command - watch MCP installation progress
@@ -239,65 +301,6 @@ export class MCPPackageCLI {
         await this.handleRepositoryCommandV2("remove-package", target, options.path, actionArgs);
       });
 
-    // Old commands (legacy v1 system)
-    const oldCommand = this.program
-      .command("old")
-      .description("Legacy v1 commands using old repository detection");
-
-    oldCommand
-      .command("build")
-      .description("Build the project using legacy repository detection")
-      .argument("[target]", "Target to build (defaults to root target)")
-      .option("--path <path>", "Path to the repository (defaults to git root)")
-      .action(async (target, options) => {
-        await this.handleRepositoryCommand("build", target, options.path);
-      });
-
-    oldCommand
-      .command("dev")
-      .description("Start development server using legacy repository detection")
-      .argument("[target]", "Target to run in dev mode (defaults to root target)")
-      .option("--path <path>", "Path to the repository (defaults to git root)")
-      .allowUnknownOption()
-      .action(async (target, options, command) => {
-        // Extract additional arguments after -- from raw args
-        const rawArgs = command.args || [];
-        const dashDashIndex = process.argv.indexOf('--');
-        const additionalArgs = dashDashIndex !== -1 ? process.argv.slice(dashDashIndex + 1) : [];
-
-        await this.handleRepositoryCommand("dev", target, options.path, additionalArgs);
-      });
-
-    oldCommand
-      .command("check")
-      .description("Run type/lint checks using legacy repository detection")
-      .argument("[target]", "Target to check (defaults to root target)")
-      .option("--path <path>", "Path to the repository (defaults to git root)")
-      .action(async (target, options) => {
-        await this.handleRepositoryCommand("check", target, options.path);
-      });
-
-    oldCommand
-      .command("test")
-      .description("Run tests using legacy repository detection")
-      .argument("[target]", "Target to test (defaults to current directory target)")
-      .option("--path <path>", "Path to the repository (defaults to git root)")
-      .action(async (target, options) => {
-        await this.handleRepositoryCommand("test", target, options.path);
-      });
-
-    oldCommand
-      .command("add")
-      .alias("a")
-      .description("Add a package to the project using legacy repository detection")
-      .argument("<package>", "Package name to add")
-      .argument("[target]", "Target to add package to (defaults to current directory target)")
-      .option("--path <path>", "Path to the repository (defaults to git root)")
-      .option("--dev", "Add as development dependency")
-      .action(async (packageName, target, options) => {
-        await this.handleAddCommand(packageName, target, options.path, options.dev);
-      });
-
     // Repo analysis command
     this.program
       .command("repo")
@@ -444,106 +447,6 @@ export class MCPPackageCLI {
     return path.resolve(startPath);
   }
 
-  private normalizeTargetPath(target: string | undefined, workingDir: string): string | undefined {
-    if (!target) return undefined;
-
-    // If target starts with //, it's already a repository-root-relative path
-    if (target.startsWith("//")) {
-      // Remove trailing slashes for consistency
-      return target.replace(/\/+$/, "");
-    }
-
-    // If target contains a colon, it might be a target key - don't modify
-    if (target.includes(":")) {
-      return target;
-    }
-
-    // If target is an absolute path, don't modify
-    if (path.isAbsolute(target)) {
-      return target;
-    }
-
-    // Handle relative paths
-    let cleanTarget = target;
-
-    // Strip leading ./ if present
-    if (cleanTarget.startsWith("./")) {
-      cleanTarget = cleanTarget.substring(2);
-    }
-
-    // Get current directory relative to repo root
-    const currentRelative = path.relative(workingDir, process.cwd());
-
-    let resolvedPath: string;
-    if (currentRelative === "") {
-      // We're at repo root
-      if (cleanTarget === "" || cleanTarget === ".") {
-        // Target is current directory (repo root)
-        return "//";
-      }
-      // Resolve relative path from repo root
-      resolvedPath = path.normalize(cleanTarget);
-    } else {
-      // We're in a subdirectory
-      if (cleanTarget === "" || cleanTarget === ".") {
-        // Target is current directory
-        resolvedPath = currentRelative;
-      } else {
-        // Resolve relative path from current directory
-        resolvedPath = path.normalize(path.join(currentRelative, cleanTarget));
-      }
-    }
-
-    // Handle cases where path goes above repo root
-    if (resolvedPath.startsWith("..")) {
-      throw new Error(`Target path "${target}" resolves outside of repository root`);
-    }
-
-    // Convert to repository-root-relative format
-    const normalized = resolvedPath === "." ? "//" : `//${resolvedPath}`;
-    return normalized.replace(/\/+$/, ""); // Remove trailing slashes
-  }
-
-  private async handleRepositoryCommand(
-    actionType: "build" | "dev" | "check" | "test",
-    targetArg: string | undefined,
-    repoPath: string | undefined,
-    additionalArgs: string[] = []
-  ): Promise<void> {
-    try {
-      const jwt = await this.ensureAuthenticated();
-
-      const workingDir = repoPath ? path.resolve(repoPath) : this.findGitRepoRoot(process.cwd());
-      const normalizedTarget = this.normalizeTargetPath(targetArg, workingDir);
-
-      const options: ExecuteCommandOptions = {
-        onOutput: (message: string, type: 'info' | 'error' | 'success') => {
-          switch (type) {
-            case 'info':
-              console.log(chalk.blue(message));
-              break;
-            case 'success':
-              console.log(chalk.green(message));
-              break;
-            case 'error':
-              console.log(chalk.red(message));
-              break;
-          }
-        },
-        additionalArgs
-      };
-
-      await executeRepositoryCommand(actionType, targetArg, workingDir, options);
-
-    } catch (error) {
-      console.error(
-        chalk.red(`❌ ${actionType} failed:`),
-        error instanceof Error ? error.message : String(error)
-      );
-      process.exit(1);
-    }
-  }
-
   private async handleRepositoryCommandV2(
     actionType: ActionType,
     targetArg: string | undefined,
@@ -588,48 +491,6 @@ export class MCPPackageCLI {
     }
   }
 
-  private async handleAddCommand(
-    packageName: string,
-    targetArg: string | undefined,
-    repoPath: string | undefined,
-    isDev: boolean = false
-  ): Promise<void> {
-    try {
-      const jwt = await this.ensureAuthenticated();
-
-      const workingDir = repoPath ? path.resolve(repoPath) : this.findGitRepoRoot(process.cwd());
-      const normalizedTarget = this.normalizeTargetPath(targetArg, workingDir);
-
-      const options: ExecuteAddCommandOptions = {
-        packageName,
-        isDev,
-        onOutput: (message: string, type: 'info' | 'error' | 'success') => {
-          switch (type) {
-            case 'info':
-              console.log(chalk.blue(message));
-              break;
-            case 'success':
-              console.log(chalk.green(message));
-              break;
-            case 'error':
-              console.log(chalk.red(message));
-              break;
-          }
-        }
-      };
-
-      await executeAddCommand(targetArg, workingDir, options);
-
-    } catch (error) {
-      console.error(
-        chalk.red(`❌ Failed to add package ${packageName}:`),
-        error instanceof Error ? error.message : String(error)
-      );
-      process.exit(1);
-    }
-  }
-
-
   async run(): Promise<void> {
     try {
       // Initialize authentication on startup
@@ -655,6 +516,14 @@ export class MCPPackageCLI {
   }
 }
 
-// Run CLI - this file is always the entry point when used as a binary
-const cli = new MCPPackageCLI();
-cli.run();
+export async function sourcewizardSetup(name: string) {
+  const cli = new MCPPackageCLI();
+  await cli['cliAuth'].initialize();
+  await cli.doInstall(name);
+}
+
+// Run CLI only when this file is executed directly, not when imported
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const cli = new MCPPackageCLI();
+  cli.run();
+}

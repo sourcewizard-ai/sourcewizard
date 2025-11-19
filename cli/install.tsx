@@ -347,7 +347,7 @@ const App: React.FC<AppProps> = ({
                   justifyContent="center"
                 >
                   <Text color="black" bold>
-                    Exit the setup
+                    Press Enter to exit the setup
                   </Text>
                 </Box>
               </Box>
