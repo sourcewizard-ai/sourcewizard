@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  SetLevelRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { NewAgent } from "../install-agent/new-agent.js";
 import { ProgressServer } from "../cli/progress-server.js";
@@ -12,6 +13,18 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { analyzeRepositoryV2, executeRepositoryCommandV2 } from "../repodetect/index.js";
+
+// Setup file logging since Cursor doesn't support MCP logging protocol
+const logDir = path.join(os.homedir(), '.config', 'sourcewizard', 'logs');
+fs.mkdirSync(logDir, { recursive: true });
+const logFile = path.join(logDir, `mcp-${new Date().toISOString().replace(/[:.]/g, '-')}.log`);
+const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+function log(level: string, message: string) {
+  const timestamp = new Date().toISOString();
+  const logLine = `${timestamp} [${level}] ${message}\n`;
+  logStream.write(logLine);
+}
 
 // Global progress server instance
 let progressServer: ProgressServer | null = null;
@@ -65,7 +78,7 @@ function updatePortFileMetadata(updates: any) {
     const updatedData = { ...currentData, ...updates };
     fs.writeFileSync(portFilePath, JSON.stringify(updatedData, null, 2));
   } catch (error) {
-    console.error('Failed to update port file metadata:', error);
+    log('error', `Failed to update port file metadata: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -76,22 +89,22 @@ function updateOperationInMetadata(operationId: string, operationUpdates: any) {
   try {
     const currentData = JSON.parse(fs.readFileSync(portFilePath, 'utf8'));
 
-    if (!currentData.operations) {
-      currentData.operations = {};
+    if (!currentData.installations) {
+      currentData.installations = {};
     }
 
-    if (!currentData.operations[operationId]) {
-      currentData.operations[operationId] = {};
+    if (!currentData.installations[operationId]) {
+      currentData.installations[operationId] = {};
     }
 
-    currentData.operations[operationId] = {
-      ...currentData.operations[operationId],
+    currentData.installations[operationId] = {
+      ...currentData.installations[operationId],
       ...operationUpdates
     };
 
     fs.writeFileSync(portFilePath, JSON.stringify(currentData, null, 2));
   } catch (error) {
-    console.error('Failed to update operation metadata:', error);
+    log('error', `Failed to update operation metadata: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -103,15 +116,23 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      logging: {},
     },
   }
 );
+
+// Handle logging level requests
+server.setRequestHandler(SetLevelRequestSchema, async (request) => {
+  const { level } = request.params;
+  // Just acknowledge - the SDK handles this internally
+  return {};
+});
 
 // List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   const isDevelopment = process.env.NODE_ENV === "development";
 
-  const tools = [
+  const tools: any[] = [
     {
       name: "search_packages",
       description:
@@ -249,6 +270,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       serverUrl: process.env.SOURCEWIZARD_SERVER_URL || (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sourcewizard.ai"),
       apiKey,
       onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage, stage, description }) => {
+        // Log the step at the start
+        log('info', `Agent step: text="${text}", stage="${stage}", finishReason="${finishReason}"`);
+
         // Find the currently active operation for this agent call
         // For now, we'll use the most recent operation as there's no direct way to tie agent steps to specific operations
         const currentOperation = Array.from(activeOperations.values())
@@ -260,7 +284,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const isComplete = finishReason === "stop" || finishReason === "length";
           const maxSteps = currentOperation.type === 'install' ? 15 : 10; // Different estimates for different operations
 
-          console.error(`Progress update for ${currentOperation.id}: step ${currentOperation.stepCounter}, text: ${text}, finishReason: ${finishReason}`);
+          // Log progress update
+          log('info', `Progress update for ${currentOperation.id}: step ${currentOperation.stepCounter}, text: ${text}, finishReason: ${finishReason}`);
 
           const progressData = {
             operationId: currentOperation.id,
@@ -341,14 +366,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
 
         activeOperations.set(operationId, operationProgress);
-        console.error(`Starting installation of ${packageName} with ID ${operationId}, progress server active: ${!!progressServer}`);
+        log('info', `Starting installation of ${packageName} with ID ${operationId}, progress server active: ${!!progressServer}`);
 
-        // Update metadata to include this operation
+        // Update metadata to include this installation
         updateOperationInMetadata(operationId, {
           id: operationId,
-          type: 'install',
           packageName,
-          status: 'processing',
+          status: 'installing',
           startedAt: Date.now()
         });
 
@@ -363,7 +387,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             // Ensure completion is reported to progress server
             if (progressServer) {
-              console.error(`Explicit completion update for ${operationId}: ${packageName}`);
+              log('info', `Explicit completion update for ${operationId}: ${packageName}`);
               progressServer.updateProgress({
                 operationId: operationId,
                 installationId: operationId, // Keep for backwards compatibility
@@ -566,7 +590,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
 
         activeOperations.set(operationId, operationProgress);
-        console.error(`Starting code reuse analysis for task "${task}" with ID ${operationId}, progress server active: ${!!progressServer}`);
+        log('info', `Starting code reuse analysis for task "${task}" with ID ${operationId}, progress server active: ${!!progressServer}`);
 
         // Update metadata to include this operation
         updateOperationInMetadata(operationId, {
@@ -608,7 +632,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
               // Ensure completion is reported to progress server
               if (progressServer) {
-                console.error(`Explicit completion update for ${operationId}: code reuse analysis`);
+                log('info', `Explicit completion update for ${operationId}: code reuse analysis`);
                 progressServer.updateProgress({
                   operationId: operationId,
                   installationId: operationId, // Keep for backwards compatibility
@@ -683,7 +707,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               });
             }
 
-            console.error(`Error in background code reuse analysis ${operationId}:`, error);
+            log('error', `Error in background code reuse analysis ${operationId}: ${error instanceof Error ? error.message : String(error)}`);
           }
         })();
 
@@ -820,12 +844,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Start the server
 export async function main() {
-  // Start the progress server with dynamic port allocation
+  // Redefine console.log and console.error to prevent accidental logging to stdout/stderr
+  // which would break the stdio protocol
+  console.log = (...args: any[]) => {
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+    log('info', message);
+  };
+
+  console.error = (...args: any[]) => {
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+    log('error', message);
+  };
+
+  // Connect to transport FIRST before sending any notifications
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+
+  // Log startup
+  log('info', 'SourceWizard MCP server connected');
+  log('info', 'Log file: ' + logFile);
+
+  // Now start the progress server with dynamic port allocation
   progressServer = new ProgressServer(0); // Use 0 for dynamic port
   let progressPort: number;
   try {
     progressPort = await progressServer.start();
-    console.error(`Progress server started on http://localhost:${progressPort}`);
+    log('info', `Progress server started on http://localhost:${progressPort}`);
 
     // Write the port and metadata to a temp file so CLI can discover it
     const portFile = path.join(os.tmpdir(), `sourcewizard-progress-${process.pid}.port`);
@@ -835,12 +879,12 @@ export async function main() {
       pid: process.pid,
       startTime: Date.now(),
       cwd: process.cwd(),
-      operations: {}
+      installations: {}
     };
 
     fs.writeFileSync(portFile, JSON.stringify(metadata, null, 2));
     portFilePath = portFile;
-    console.error(`Progress metadata written to: ${portFile}`);
+    log('info', `Progress metadata written to: ${portFile}`);
 
     // Clean up port file on exit
     process.on('exit', () => {
@@ -861,12 +905,10 @@ export async function main() {
     });
 
   } catch (error) {
-    console.error("Failed to start progress server:", error);
+    log('error', `Failed to start progress server: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("SourceWizard MCP server running on stdio");
+  log('info', 'SourceWizard MCP server running on stdio');
 }
 
 // Run if called directly

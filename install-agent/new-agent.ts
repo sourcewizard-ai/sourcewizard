@@ -424,10 +424,22 @@ export class NewAgent {
     try {
       toolDefinition.parameters.parse(toolArgs);
     } catch (error) {
+      // Return validation errors as tool results instead of throwing
+      // This allows the LLM to see the error and retry with corrected parameters
       if (error instanceof Error && error.name === 'ZodError') {
-        throw new Error(`Invalid arguments for tool ${toolName}: ${error.message}`);
+        return {
+          success: false,
+          error: `Invalid arguments for tool ${toolName}: ${error.message}. Please check the tool schema and provide valid arguments.`,
+          toolName,
+          providedArgs: toolArgs
+        };
       }
-      throw new Error(`Failed to validate arguments for tool ${toolName}: ${error}`);
+      return {
+        success: false,
+        error: `Failed to validate arguments for tool ${toolName}: ${error}`,
+        toolName,
+        providedArgs: toolArgs
+      };
     }
 
     switch (toolName) {

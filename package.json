@@ -1,9 +1,9 @@
 {
   "name": "sourcewizard",
-  "version": "0.3.4",
+  "version": "0.3.7",
   "description": "SourceWizard - AI-powered setup wizard for dev tools and libraries with MCP integration",
   "type": "module",
-  "main": "dist/cli/index.js",
+  "main": "dist/index.js",
   "bin": {
     "sourcewizard": "dist/cli/index.js"
   },
@@ -14,7 +14,7 @@
     "package.json"
   ],
   "exports": {
-    ".": "./dist/cli/index.js",
+    ".": "./dist/index.js",
     "./repodetect": "./dist/repodetect/index.js"
   },
   "scripts": {
