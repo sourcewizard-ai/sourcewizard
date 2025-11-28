@@ -1,0 +1,54 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="retroGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#0000FF;stop-opacity:1" />
+      <stop offset="6.7%" style="stop-color:#0000FF;stop-opacity:1" />
+      <stop offset="6.7%" style="stop-color:#0000EE;stop-opacity:1" />
+      <stop offset="13.3%" style="stop-color:#0000EE;stop-opacity:1" />
+      <stop offset="13.3%" style="stop-color:#0000DD;stop-opacity:1" />
+      <stop offset="20%" style="stop-color:#0000DD;stop-opacity:1" />
+      <stop offset="20%" style="stop-color:#0000CC;stop-opacity:1" />
+      <stop offset="26.7%" style="stop-color:#0000CC;stop-opacity:1" />
+      <stop offset="26.7%" style="stop-color:#0000BB;stop-opacity:1" />
+      <stop offset="33.3%" style="stop-color:#0000BB;stop-opacity:1" />
+      <stop offset="33.3%" style="stop-color:#0000AA;stop-opacity:1" />
+      <stop offset="40%" style="stop-color:#0000AA;stop-opacity:1" />
+      <stop offset="40%" style="stop-color:#000099;stop-opacity:1" />
+      <stop offset="46.7%" style="stop-color:#000099;stop-opacity:1" />
+      <stop offset="46.7%" style="stop-color:#000088;stop-opacity:1" />
+      <stop offset="53.3%" style="stop-color:#000088;stop-opacity:1" />
+      <stop offset="53.3%" style="stop-color:#000077;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#000077;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#000066;stop-opacity:1" />
+      <stop offset="66.7%" style="stop-color:#000066;stop-opacity:1" />
+      <stop offset="66.7%" style="stop-color:#000055;stop-opacity:1" />
+      <stop offset="73.3%" style="stop-color:#000055;stop-opacity:1" />
+      <stop offset="73.3%" style="stop-color:#000044;stop-opacity:1" />
+      <stop offset="80%" style="stop-color:#000044;stop-opacity:1" />
+      <stop offset="80%" style="stop-color:#000033;stop-opacity:1" />
+      <stop offset="86.7%" style="stop-color:#000033;stop-opacity:1" />
+      <stop offset="86.7%" style="stop-color:#000022;stop-opacity:1" />
+      <stop offset="93.3%" style="stop-color:#000022;stop-opacity:1" />
+      <stop offset="93.3%" style="stop-color:#000011;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#000011;stop-opacity:1" />
+    </linearGradient>
+    <style>
+      .text {
+        font-family: monospace;
+        font-weight: bold;
+        font-style: italic;
+        fill: #ffffff;
+        stroke: #000000;
+        stroke-width: 4;
+        paint-order: stroke fill;
+      }
+    </style>
+  </defs>
+  <!-- Background with retro discrete steps gradient -->
+  <rect width="512" height="512" fill="url(#retroGradient)" rx="64"/>
+  
+  <!-- Centered SW letters with manual italic transformation -->
+  <g transform="translate(256, 256) skewX(-15)">
+    <text x="0" y="0" class="text" font-size="200" text-anchor="middle" dominant-baseline="central">SW</text>
+  </g>
+</svg>

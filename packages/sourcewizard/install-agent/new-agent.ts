@@ -8,8 +8,8 @@ export interface NewAgentOptions {
   serverUrl: string;
   apiKey?: string;
   jwt?: string;
-  cwd: string;
-  projectContext: ProjectContext;
+  cwd?: string;
+  projectContext?: ProjectContext;
   onStepFinish?: (stepData: any) => void;
 }
 
@@ -81,7 +81,13 @@ export class NewAgent {
     return headers;
   }
 
-  async searchPackages(query: string): Promise<NewAgentResult> {
+  async searchPackages(query: string, projectContext?: ProjectContext, cwd?: string): Promise<NewAgentResult> {
+    if (projectContext) {
+      this.projectContext = projectContext;
+    }
+    if (cwd) {
+      this.cwd = cwd;
+    }
     // Add bulk target data to project context
     const bulkTargetData = await getBulkTargetData(
       this.projectContext.targets,
@@ -109,7 +115,13 @@ export class NewAgent {
     return this.runConversation(agent_id);
   }
 
-  async installPackage(packageName: string): Promise<NewAgentResult> {
+  async installPackage(packageName: string, projectContext?: ProjectContext, cwd?: string): Promise<NewAgentResult> {
+    if (projectContext) {
+      this.projectContext = projectContext;
+    }
+    if (cwd) {
+      this.cwd = cwd;
+    }
     // Add bulk target data to project context
     const bulkTargetData = await getBulkTargetData(
       this.projectContext.targets,

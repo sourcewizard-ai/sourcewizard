@@ -147,10 +147,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           cwd: {
             type: "string",
             description:
-              "Current working directory path (optional, defaults to process.cwd())",
+              "Current project working directory path",
           },
         },
-        required: ["query"],
+        required: ["query", "cwd"],
       },
     },
     {
@@ -166,10 +166,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           cwd: {
             type: "string",
             description:
-              "Current working directory path (optional, defaults to process.cwd())",
+              "Current project working directory path",
           },
         },
-        required: ["packageName"],
+        required: ["packageName", "cwd"],
       },
     },
   ];
@@ -254,9 +254,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   try {
-    const cwd = args.cwd || process.cwd();
-    const projectContext = await analyzeRepositoryV2(cwd as string);
-
     // Get API key or JWT from environment variables
     const apiKey = process.env.SOURCEWIZARD_API_KEY;
 
@@ -265,8 +262,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     const agent = new NewAgent({
-      cwd: cwd as string,
-      projectContext,
+      cwd: null,
+      projectContext: null,
       serverUrl: process.env.SOURCEWIZARD_SERVER_URL || (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sourcewizard.ai"),
       apiKey,
       onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage, stage, description }) => {
@@ -319,11 +316,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case "search_packages": {
         const query = args.query;
+        const cwd = args.cwd as string;
+        if (!cwd) {
+          throw new Error("Current working directory is required");
+        }
         if (typeof query !== "string") {
           throw new Error("Query must be a string");
         }
+        const projectContext = await analyzeRepositoryV2(cwd as string);
 
-        const result = await agent.searchPackages(query);
+        const result = await agent.searchPackages(query, projectContext, cwd);
 
         return {
           content: [
@@ -350,6 +352,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "install_package": {
         const packageName = args.packageName;
+        const cwd = args.cwd as string;
+        if (!cwd) {
+          throw new Error("Current working directory is required");
+        }
         if (typeof packageName !== "string") {
           throw new Error("Package name must be a string");
         }
@@ -377,8 +383,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
 
         try {
+          const cwd = args.cwd as string;
+          const projectContext = await analyzeRepositoryV2(cwd as string);
           // Install the package using the existing agent with structured progress updates
-          const result = await agent.installPackage(packageName);
+          const result = await agent.installPackage(packageName, projectContext, cwd);
 
           const operation = activeOperations.get(operationId);
           if (operation) {
