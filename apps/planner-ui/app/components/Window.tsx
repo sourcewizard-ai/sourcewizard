@@ -38,6 +38,7 @@ export default function Window({
   const router = useRouter();
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pressedButtons, setPressedButtons] = useState<Set<string>>(new Set());
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const isExpanded = currentStep === "plans-ready" || currentStep === "complete";
 
   const windowWidth = isExpanded ? 1200 : 900;
@@ -103,8 +104,8 @@ export default function Window({
     <div className="relative h-screen bg-black overflow-hidden flex">
       <RetroBackground pattern={backgroundPattern} />
 
-      {/* Sidebar on the left, below logo */}
-      <div className="absolute left-1 top-20 z-30">
+      {/* Sidebar on the left, below logo - hidden on mobile by default */}
+      <div className={`${showMobileSidebar ? 'block' : 'hidden'} md:block absolute left-1 top-20 z-30`}>
         <Sidebar onMyPlansClick={onMyPlansClick} onSettingsClick={onSettingsClick} />
       </div>
 
@@ -112,15 +113,27 @@ export default function Window({
       <div className="flex-1 relative">
         {/* Logo behind window */}
         <Logo />
+        
+        {/* Mobile sidebar toggle button - aligned with taskbar */}
+        <button
+          onClick={() => setShowMobileSidebar(!showMobileSidebar)}
+          className="md:hidden absolute left-1 top-[36px] z-40 bg-gray-300 text-black px-1.5 py-0.5 text-[10px] font-bold border-2 border-gray-500"
+          style={{
+            fontFamily: fonts.mono,
+            boxShadow: showMobileSidebar ? "inset 1px 1px 0 #808080" : "2px 2px 0 #000000",
+          }}
+        >
+          {showMobileSidebar ? '▼' : '▶'}
+        </button>
 
         {/* Floating TaskBar at the top */}
         <div className="relative" style={{ zIndex: 20 }}>
           <TaskBar initialActiveSection="planner" isFloating={true} userEmail={userEmail} />
         </div>
 
-        {/* Floating window - centered and smaller */}
+        {/* Floating window - centered and smaller, full width on mobile */}
         <div
-          className="relative z-10 w-full h-full flex items-center justify-center p-2 sm:p-8"
+          className="relative z-10 w-full h-full flex items-start md:items-center justify-center p-0 sm:p-2 md:p-8"
           style={{
             paddingTop: isExpanded ? '60px' : undefined,
           }}

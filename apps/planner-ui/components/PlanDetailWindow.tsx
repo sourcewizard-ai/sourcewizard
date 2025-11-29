@@ -60,6 +60,39 @@ export default function PlanDetailWindow({
     [progressMessages]
   );
 
+  // Fallback copy function for mobile browsers
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+      
+      // Fallback for older browsers and mobile
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      try {
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        return successful;
+      } catch (err) {
+        document.body.removeChild(textArea);
+        return false;
+      }
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      return false;
+    }
+  };
+
   // Check if plan has any sections
   const hasSections = plan.sections.setup.length > 0 ||
                       plan.sections.integration.length > 0 ||
@@ -100,7 +133,7 @@ export default function PlanDetailWindow({
           <div className="flex flex-col items-end ml-2 flex-shrink-0">
             <div className="relative">
               <button
-                onClick={() => {
+                onClick={async () => {
                   let markdown = `# ${plan.title}\n\n`;
                   markdown += `**Difficulty:** ${plan.difficulty}\n`;
                   markdown += `**Estimated Time:** ${plan.estimatedTime}\n\n`;
@@ -109,15 +142,20 @@ export default function PlanDetailWindow({
                   markdown += `## Integration\n\n${plan.sections.integration.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}\n\n`;
                   markdown += `## Verification\n\n${plan.sections.verification.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}`;
 
-                  navigator.clipboard.writeText(markdown);
+                  const success = await copyToClipboard(markdown);
 
-                  // Show copied message
-                  setShowCopiedMessage(true);
-                  setTimeout(() => setShowCopiedMessage(false), 2000);
+                  if (success) {
+                    // Show copied message
+                    setShowCopiedMessage(true);
+                    setTimeout(() => setShowCopiedMessage(false), 2000);
 
-                  // Show next steps window
-                  if (onShowNextSteps) {
-                    onShowNextSteps();
+                    // Show next steps window
+                    if (onShowNextSteps) {
+                      onShowNextSteps();
+                    }
+                  } else {
+                    // Show error message
+                    alert('Failed to copy to clipboard. Please try again.');
                   }
                 }}
                 className="px-3 py-1 text-xs bg-gray-600 text-white border border-gray-700 cursor-pointer hover:bg-gray-700 whitespace-nowrap"

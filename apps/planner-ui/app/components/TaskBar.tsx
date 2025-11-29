@@ -93,7 +93,7 @@ export default function TaskBar({
   return (
     <div
       className={`taskbar-container ${isFloating
-        ? 'top-[56px] md:top-[8px]'
+        ? 'top-[36px] md:top-[8px]'
         : 'w-full flex justify-center'
         }`}
       style={{

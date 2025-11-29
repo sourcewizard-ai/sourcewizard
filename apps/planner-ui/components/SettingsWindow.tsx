@@ -58,9 +58,9 @@ export default function SettingsWindow({
       resizable={false}
     >
       <div className="flex h-full">
-        {/* Sidebar */}
-        <div className="w-40 border-r-2 border-gray-400 bg-gray-200 flex-shrink-0">
-          <div className="flex flex-col p-2 space-y-1">
+        {/* Sidebar - narrower on mobile */}
+        <div className="w-24 sm:w-40 border-r-2 border-gray-400 bg-gray-200 flex-shrink-0">
+          <div className="flex flex-col p-1 sm:p-2 space-y-1">
             {[
               { id: 'general' as SettingsSection, label: 'General' },
               { id: 'appearance' as SettingsSection, label: 'Appearance' },
@@ -69,7 +69,7 @@ export default function SettingsWindow({
               <button
                 key={section.id}
                 onClick={() => setActiveSection(section.id)}
-                className="text-left px-3 py-2 text-sm border-2 border-gray-400 cursor-pointer"
+                className="text-left px-2 sm:px-3 py-2 text-xs sm:text-sm border-2 border-gray-400 cursor-pointer"
                 style={{
                   fontFamily: fonts.mono,
                   backgroundColor: activeSection === section.id ? '#e0e0e0' : '#f5f5f5',
@@ -87,19 +87,19 @@ export default function SettingsWindow({
           {activeSection === 'appearance' && (
             <>
               {/* Header */}
-              <div className="p-6 pb-3 flex-shrink-0">
-                <h3 className="text-sm font-bold" style={{ fontFamily: fonts.mono }}>
+              <div className="p-3 sm:p-6 pb-2 sm:pb-3 flex-shrink-0">
+                <h3 className="text-xs sm:text-sm font-bold" style={{ fontFamily: fonts.mono }}>
                   Background Pattern
                 </h3>
               </div>
 
               {/* Scrollable Background Grid */}
-              <div className="flex-1 px-6 overflow-y-auto min-h-0">
-                <div className="grid grid-cols-3 gap-3 pb-3">
+              <div className="flex-1 px-3 sm:px-6 overflow-y-auto min-h-0">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 pb-3">
                   {backgrounds.map((bg) => (
                     <div
                       key={bg.id}
-                      className="flex flex-col items-center p-3 border-2 border-gray-400 cursor-pointer hover:bg-gray-100"
+                      className="flex flex-col items-center p-2 sm:p-3 border-2 border-gray-400 cursor-pointer hover:bg-gray-100"
                       style={{
                         fontFamily: fonts.mono,
                         backgroundColor: selectedBackground === bg.id ? '#e0e0e0' : '#f5f5f5',
@@ -108,14 +108,14 @@ export default function SettingsWindow({
                       onClick={() => setSelectedBackground(bg.id)}
                     >
                       <div
-                        className="w-20 h-20 border-2 border-black mb-2 flex-shrink-0"
+                        className="w-16 h-16 sm:w-20 sm:h-20 border-2 border-black mb-1 sm:mb-2 flex-shrink-0"
                         style={{
                           ...backgroundPatterns[bg.id],
                           boxShadow: '2px 2px 0 #000000',
                         }}
                       />
                       <div className="text-center">
-                        <div className="font-bold text-xs">{bg.name}</div>
+                        <div className="font-bold text-[10px] sm:text-xs">{bg.name}</div>
                       </div>
                     </div>
                   ))}
@@ -125,8 +125,8 @@ export default function SettingsWindow({
           )}
 
           {activeSection === 'general' && (
-            <div className="flex-1 p-6 overflow-y-auto">
-              <h3 className="text-sm font-bold mb-4" style={{ fontFamily: fonts.mono }}>
+            <div className="flex-1 p-3 sm:p-6 overflow-y-auto">
+              <h3 className="text-xs sm:text-sm font-bold mb-4" style={{ fontFamily: fonts.mono }}>
                 General Settings
               </h3>
 
@@ -205,8 +205,8 @@ export default function SettingsWindow({
           )}
 
           {activeSection === 'about' && (
-            <div className="flex-1 p-6 overflow-y-auto">
-              <h3 className="text-sm font-bold mb-4" style={{ fontFamily: fonts.mono }}>
+            <div className="flex-1 p-3 sm:p-6 overflow-y-auto">
+              <h3 className="text-xs sm:text-sm font-bold mb-4" style={{ fontFamily: fonts.mono }}>
                 About
               </h3>
               <p className="text-sm mb-2" style={{ fontFamily: fonts.mono }}>
@@ -223,27 +223,27 @@ export default function SettingsWindow({
           )}
 
           {/* Fixed Buttons */}
-          <div className="p-6 pt-4 border-t-2 border-gray-400 flex-shrink-0">
-            <div className="flex gap-3">
+          <div className="p-3 sm:p-6 pt-3 sm:pt-4 border-t-2 border-gray-400 flex-shrink-0">
+            <div className="flex gap-2 sm:gap-3">
               <button
                 onClick={handleApply}
-                className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white border-2 border-blue-700 cursor-pointer hover:bg-blue-700"
+                className="flex-1 px-2 sm:px-4 py-2 text-xs sm:text-sm bg-blue-600 text-white border-2 border-blue-700 cursor-pointer hover:bg-blue-700"
                 style={{
                   fontFamily: fonts.mono,
                   boxShadow: '2px 2px 0 #000000',
                 }}
               >
-                [ Apply ]
+                Apply
               </button>
               <button
                 onClick={onClose}
-                className="flex-1 px-4 py-2 text-sm bg-gray-400 text-black border-2 border-gray-500 cursor-pointer hover:bg-gray-500"
+                className="flex-1 px-2 sm:px-4 py-2 text-xs sm:text-sm bg-gray-400 text-black border-2 border-gray-500 cursor-pointer hover:bg-gray-500"
                 style={{
                   fontFamily: fonts.mono,
                   boxShadow: '2px 2px 0 #000000',
                 }}
               >
-                [ Cancel ]
+                Cancel
               </button>
             </div>
           </div>

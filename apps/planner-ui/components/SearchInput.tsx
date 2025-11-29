@@ -107,7 +107,7 @@ export default function SearchInput({ onSubmit, placeholder = "Type package name
                 setTimeout(() => setShowSuggestions(false), 200);
               }}
               placeholder={placeholder}
-              className="w-full p-2 sm:p-4 text-sm sm:text-base bg-white border-2 border-gray-400 text-black"
+              className="w-full p-2 sm:p-4 text-base bg-white border-2 border-gray-400 text-black"
               style={{
                 fontFamily: "monospace",
                 boxShadow: "inset 2px 2px 0 #808080, 4px 4px 0 #000000",

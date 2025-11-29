@@ -35,12 +35,23 @@ export default function DraggableWindow({
   const [isClosePressed, setIsClosePressed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const [position, setPosition] = useState<{ x: number; y: number } | null>(
     initialX !== undefined && initialY !== undefined
       ? { x: initialX, y: initialY }
       : null
   );
+
+  // Check if mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Set centered position after mount
   useEffect(() => {
@@ -219,14 +230,14 @@ export default function DraggableWindow({
       className="fixed bg-gray-50 text-black flex flex-col"
       style={{
         fontFamily: fonts.mono,
-        fontSize: "14px",
-        width: `${size.width}px`,
-        height: `${size.height}px`,
-        top: position ? `${position.y}px` : '50%',
-        left: position ? `${position.x}px` : '50%',
-        transform: position ? 'none' : 'translate(-50%, -50%)',
-        boxShadow: "4px 4px 0 rgba(0, 0, 0, 0.5)",
-        border: "2px solid #808080",
+        fontSize: isMobile ? "12px" : "14px",
+        width: isMobile ? '100vw' : `${size.width}px`,
+        height: isMobile ? 'calc(100vh - 80px)' : `${size.height}px`,
+        top: isMobile ? '80px' : (position ? `${position.y}px` : '50%'),
+        left: isMobile ? '0' : (position ? `${position.x}px` : '50%'),
+        transform: isMobile ? 'none' : (position ? 'none' : 'translate(-50%, -50%)'),
+        boxShadow: isMobile ? 'none' : "4px 4px 0 rgba(0, 0, 0, 0.5)",
+        border: isMobile ? 'none' : "2px solid #808080",
         zIndex,
         cursor: isDragging ? 'grabbing' : 'default',
       }}
@@ -239,9 +250,9 @@ export default function DraggableWindow({
           fontFamily: fonts.mono,
           userSelect: "none",
           WebkitUserSelect: "none",
-          cursor: 'grab',
+          cursor: isMobile ? 'default' : 'grab',
         }}
-        onMouseDown={handleDragStart}
+        onMouseDown={isMobile ? undefined : handleDragStart}
       >
         <div className="flex items-center">
           {typeof title === 'string' ? (
@@ -278,8 +289,8 @@ export default function DraggableWindow({
         {children}
       </div>
 
-      {/* Resize Handle */}
-      {resizable && (
+      {/* Resize Handle - hidden on mobile */}
+      {resizable && !isMobile && (
         <div
           className="absolute bottom-0 right-0 w-2 h-2 cursor-se-resize"
           style={{

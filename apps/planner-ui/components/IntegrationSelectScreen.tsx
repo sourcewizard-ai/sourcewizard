@@ -368,11 +368,11 @@ export default function IntegrationSelectScreen({
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden p-6">
+    <div className="flex flex-col h-full overflow-hidden p-2 sm:p-4 md:p-6">
       {/* Search Header - Moved Higher */}
       <div className="flex items-start justify-center pt-1 pb-2 flex-shrink-0">
         <div className="max-w-4xl w-full px-2 sm:px-4">
-          <h1 className="font-bold mb-2 text-center" style={{ fontFamily: "var(--font-vollkorn)", fontSize: "36px" }}>
+          <h1 className="font-bold mb-2 text-center text-xl sm:text-2xl md:text-3xl lg:text-4xl" style={{ fontFamily: "var(--font-vollkorn)" }}>
             Search for a package to integrate
           </h1>
 
@@ -385,11 +385,11 @@ export default function IntegrationSelectScreen({
           />
 
           {/* Repository and Branch Selection */}
-          <div className="mt-3 flex items-center gap-3 relative">
+          <div className="mt-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 relative">
             {/* Warning Message - Absolute positioned */}
             {showRepositoryWarning && (
               <div
-                className="absolute top-full left-0 mt-2 p-3 bg-yellow-100 border-2 border-yellow-500 text-black text-sm z-50"
+                className="absolute top-full left-0 mt-2 p-3 bg-yellow-100 border-2 border-yellow-500 text-black text-sm z-50 max-w-full"
                 style={{
                   fontFamily: "monospace",
                   boxShadow: '2px 2px 0 #000000',
@@ -399,7 +399,7 @@ export default function IntegrationSelectScreen({
               </div>
             )}
             {/* Repository Selection Dropdown */}
-            <div className="relative">
+            <div className="relative flex-1 sm:flex-initial">
               <input
                 type="text"
                 value={dropdownSearchTerm}
@@ -418,10 +418,10 @@ export default function IntegrationSelectScreen({
                 }}
                 placeholder={isLoadingInstallations ? "Loading installations..." : installations.length === 0 ? "No GitHub installations found" : "Select Repository"}
                 disabled={isLoadingInstallations || installations.length === 0}
-                className="px-2 py-1 bg-gray-100 text-black border border-gray-400 cursor-text disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                className="w-full px-2 py-2 bg-gray-100 text-black border border-gray-400 cursor-text disabled:opacity-50 disabled:cursor-not-allowed text-base md:text-xs"
                 style={{
                   fontFamily: "monospace",
-                  width: '180px',
+                  maxWidth: '180px',
                 }}
               />
               {showDropdown && repositories.length > 0 && (
@@ -505,7 +505,7 @@ export default function IntegrationSelectScreen({
 
             {/* Branch Selection Dropdown */}
             {selectedRepository && (
-              <div className="relative">
+              <div className="relative flex-1 sm:flex-initial">
                 <input
                   type="text"
                   value={branchSearchTerm}
@@ -523,10 +523,10 @@ export default function IntegrationSelectScreen({
                     setTimeout(() => setShowBranchDropdown(false), 200);
                   }}
                   placeholder="Select Branch"
-                  className="px-2 py-1 bg-gray-100 text-black border border-gray-400 cursor-text text-xs"
+                  className="w-full px-2 py-2 bg-gray-100 text-black border border-gray-400 cursor-text text-base md:text-xs"
                   style={{
                     fontFamily: "monospace",
-                    width: '140px',
+                    maxWidth: '140px',
                   }}
                 />
                 {showBranchDropdown && branches.length > 0 && (

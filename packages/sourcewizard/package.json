@@ -18,7 +18,9 @@
   ],
   "exports": {
     ".": "./dist/index.js",
-    "./repodetect": "./dist/repodetect/index.js"
+    "./repodetect": "./dist/repodetect/index.js",
+    "./install-agent": "./dist/install-agent/index.js",
+    "./lib": "./dist/lib/index.js"
   },
   "scripts": {
     "build": "tsc && node scripts/fix-imports.js",

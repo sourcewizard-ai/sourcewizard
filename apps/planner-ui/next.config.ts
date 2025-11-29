@@ -6,7 +6,9 @@ const nextConfig: NextConfig = {
   // This allows the HTML to be served through rewrite while assets load directly
   assetPrefix: process.env.NEXT_PUBLIC_ASSET_PREFIX || (
     process.env.NODE_ENV === 'development'
-      ? 'http://localhost:3001'
+      ? process.env.NEXT_PUBLIC_DEV_HOST
+        ? `http://${process.env.NEXT_PUBLIC_DEV_HOST}:3001`
+        : 'http://localhost:3001'
       : 'https://sourcewizard-planner.vercel.app'
   ),
 };
