@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.49",
+    "sourcewizard": "workspace:*",
     "@supabase/supabase-js": "^2.84.0",
+    "@vercel/analytics": "^1.5.0",
     "@vercel/sandbox": "^1.0.2",
     "highlight.js": "^11.11.1",
     "ms": "^2.1.3",

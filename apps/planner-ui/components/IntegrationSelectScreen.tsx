@@ -335,6 +335,8 @@ export default function IntegrationSelectScreen({
 
   const handleSearchSubmit = (value: string) => {
     if (!selectedRepository || !selectedBranch) {
+      setShowRepositoryWarning(true);
+      setTimeout(() => setShowRepositoryWarning(false), 3000);
       return;
     }
     setInputValue(value);

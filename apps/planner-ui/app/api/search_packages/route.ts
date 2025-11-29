@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { Context7Client } from '../../../lib/context7-client';
 
 export const maxDuration = 30;
 
@@ -11,12 +12,13 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20');
     const offset = parseInt(searchParams.get('offset') || '0');
     const autocomplete = searchParams.get('autocomplete') === 'true';
+    const useContext7 = searchParams.get('context7') === 'true';
 
     if (!query || query.trim().length === 0) {
-      // For autocomplete, return empty results instead of error
-      if (autocomplete) {
+      // For autocomplete or context7, return empty results instead of error
+      if (autocomplete || useContext7) {
         return new Response(
-          JSON.stringify({ packages: [], total: 0 }),
+          JSON.stringify({ packages: [], total: 0, context7Results: [] }),
           {
             status: 200,
             headers: {
@@ -29,6 +31,54 @@ export async function GET(req: NextRequest) {
       return new Response(
         JSON.stringify({ error: 'Search query is required' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Handle Context7 search
+    if (useContext7) {
+      const apiKey = process.env.CONTEXT7_API_KEY;
+      if (!apiKey) {
+        console.warn('Context7 API key not configured');
+        return new Response(
+          JSON.stringify({ context7Results: [] }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
+            }
+          }
+        );
+      }
+
+      const client = new Context7Client({ apiKey });
+      const result = await client.search(query.trim());
+
+      if (result instanceof Error) {
+        console.error('Context7 search error:', result.message);
+        return new Response(
+          JSON.stringify({ context7Results: [] }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
+            }
+          }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          context7Results: result.results.slice(0, limit)
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
+          }
+        }
       );
     }
 
