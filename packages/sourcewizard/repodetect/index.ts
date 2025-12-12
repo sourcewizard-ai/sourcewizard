@@ -173,7 +173,34 @@ export async function executeRepositoryCommandV2(
 
   if (commands.length === 0) {
     console.log(`No commands defined for ${actionType} in ${selectedTarget.language} projects`);
+    if (actionType == "check") {
+      throw new Error(`No commands defined for: ${targetId}\nResolved path: ${normalizedPath}`);
+    }
     return [];
+  }
+
+  // Write commands to file in /tmp
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const commandsFilePath = path.join('/tmp', `sourcewizard-commands-${timestamp}-${process.pid}.sh`);
+
+  const commandsFileContent = [
+    '#!/bin/bash',
+    `# SourceWizard Commands Log`,
+    `# Target: ${selectedTarget.id}`,
+    `# Action: ${actionType}`,
+    `# Working Directory: ${targetWorkingDir}`,
+    `# Timestamp: ${new Date().toISOString()}`,
+    '',
+    ...commands.map(cmd => `# Command: ${cmd}`),
+    '',
+    ...commands
+  ].join('\n');
+
+  try {
+    await fs.writeFile(commandsFilePath, commandsFileContent, { mode: 0o755 });
+    console.log(`Commands written to: ${commandsFilePath}`);
+  } catch (error) {
+    console.error(`Failed to write commands file: ${error}`);
   }
 
   // Execute commands

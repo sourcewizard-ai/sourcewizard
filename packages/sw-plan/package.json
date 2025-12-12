@@ -1,6 +1,6 @@
 {
   "name": "sw-plan",
-  "version": "0.1.14",
+  "version": "0.1.23",
   "type": "module",
   "description": "CLI tool for running integration planner in sandbox",
   "main": "./dist/index.js",

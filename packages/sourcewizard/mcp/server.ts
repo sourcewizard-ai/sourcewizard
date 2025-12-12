@@ -144,13 +144,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             type: "string",
             description: "Search query for packages or code snippets",
           },
-          cwd: {
+          project_root: {
             type: "string",
-            description:
-              "Current project working directory path",
+            description: "Absolute path to the project root directory (git repository root)",
           },
         },
-        required: ["query", "cwd"],
+        required: ["query", "project_root"],
       },
     },
     {
@@ -163,35 +162,51 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             type: "string",
             description: "Name of the package to install (should be verified using search_packages first)",
           },
-          cwd: {
+          project_root: {
             type: "string",
-            description:
-              "Current project working directory path",
+            description: "Absolute path to the project root directory (git repository root)",
           },
         },
-        required: ["packageName", "cwd"],
+        required: ["packageName", "project_root"],
       },
     },
+    {
+      name: "list_targets",
+      description: "List all available targets in the repository with their metadata including language, framework, and package manager information.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project_root: {
+            type: "string",
+            description: "Absolute path to the project root directory (git repository root)",
+          },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "check_code",
+      description: "Run type checking and linting on a target in the repository. Detects the target automatically based on the current working directory. Use list_targets first to see available targets.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          target: {
+            type: "string",
+            description: "Target to check in format '//path:name' (e.g., '//sw-portal:sw-portal'). Use list_targets to discover available targets. If not provided, will detect from current directory.",
+          },
+          project_root: {
+            type: "string",
+            description: "Absolute path to the project root directory (git repository root)",
+          },
+        },
+        required: ["project_root", "target"],
+      },
+    }
   ];
 
   // Add development-only tools
   if (isDevelopment) {
     tools.push(
-      {
-        name: "list_targets",
-        description: "List all available targets in the repository with their metadata including language, framework, and package manager information.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            cwd: {
-              type: "string",
-              description:
-                "Current working directory path (optional, defaults to process.cwd())",
-            },
-          },
-          required: [],
-        },
-      },
       {
         name: "reuse_code",
         description: "Suggest reuse of existing code from the codebase or existing external libraries. This is a long-running operation that returns immediately with an operationId. Call again with the operationId parameter to check status and retrieve results.",
@@ -213,34 +228,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "Operation ID to check status of an existing analysis. When provided, returns the current status and results if completed.",
             },
-            cwd: {
+            project_root: {
               type: "string",
-              description:
-                "Current working directory path (optional, defaults to process.cwd())",
+              description: "Absolute path to the project root directory (git repository root)",
             },
           },
           required: [],
         },
       },
-      {
-        name: "check_code",
-        description: "Run type checking and linting on a target in the repository. Detects the target automatically based on the current working directory. Use list_targets first to see available targets.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            target: {
-              type: "string",
-              description: "Target to check in format '//path:name' (e.g., '//sw-portal:sw-portal'). Use list_targets to discover available targets. If not provided, will detect from current directory.",
-            },
-            cwd: {
-              type: "string",
-              description:
-                "Current working directory path (optional, defaults to process.cwd())",
-            },
-          },
-          required: [],
-        },
-      }
     );
   }
 
@@ -316,16 +311,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case "search_packages": {
         const query = args.query;
-        const cwd = args.cwd as string;
-        if (!cwd) {
+        const project_root = args.project_root as string;
+        if (!project_root) {
           throw new Error("Current working directory is required");
         }
         if (typeof query !== "string") {
           throw new Error("Query must be a string");
         }
-        const projectContext = await analyzeRepositoryV2(cwd as string);
+        const projectContext = await analyzeRepositoryV2(project_root as string);
 
-        const result = await agent.searchPackages(query, projectContext, cwd);
+        const result = await agent.searchPackages(query, projectContext, project_root);
 
         return {
           content: [
@@ -352,8 +347,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "install_package": {
         const packageName = args.packageName;
-        const cwd = args.cwd as string;
-        if (!cwd) {
+        const project_root = args.project_root as string;
+        if (!project_root) {
           throw new Error("Current working directory is required");
         }
         if (typeof packageName !== "string") {
@@ -383,10 +378,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
 
         try {
-          const cwd = args.cwd as string;
-          const projectContext = await analyzeRepositoryV2(cwd as string);
+          const project_root = args.project_root as string;
+          const projectContext = await analyzeRepositoryV2(project_root as string);
           // Install the package using the existing agent with structured progress updates
-          const result = await agent.installPackage(packageName, projectContext, cwd);
+          const result = await agent.installPackage(packageName, projectContext, project_root);
 
           const operation = activeOperations.get(operationId);
           if (operation) {
@@ -725,14 +720,49 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "check_code": {
         const target = args.target as string | undefined;
-        const cwd = args.cwd as string || process.cwd();
+        const project_root = args.project_root as string;
 
-        // Find git repo root
-        const workingDir = findGitRepoRoot(cwd);
+        if (!project_root) {
+          throw new Error("project_root is required");
+        }
 
         try {
           // Execute check command
-          await executeRepositoryCommandV2(workingDir, cwd, "check", target, []);
+          const results = await executeRepositoryCommandV2(project_root, project_root, "check", target, []);
+
+          // Check if any commands failed
+          const failedCommands = results.filter(r => r.exitCode !== 0);
+
+          if (failedCommands.length > 0) {
+            const errorOutput = failedCommands.map(r => {
+              const parts = [];
+              parts.push(`Command: ${r.command}`);
+              parts.push(`Exit Code: ${r.exitCode}`);
+              if (r.stderr) {
+                parts.push(`\nErrors:\n${r.stderr}`);
+              }
+              if (r.stdout) {
+                parts.push(`\nOutput:\n${r.stdout}`);
+              }
+              return parts.join('\n');
+            }).join('\n\n' + '='.repeat(80) + '\n\n');
+
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    {
+                      success: false,
+                      error: `Type checking failed with ${failedCommands.length} error(s):\n\n${errorOutput}`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
 
           return {
             content: [
@@ -770,14 +800,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "list_targets": {
-        const cwd = args.cwd as string || process.cwd();
-
-        // Find git repo root
-        const workingDir = findGitRepoRoot(cwd);
-
+        const project_root = args.project_root as string;
+        if (!project_root) {
+          throw new Error("project_root is required");
+        }
         try {
           // Analyze repository to get all targets
-          const repoAnalysis = await analyzeRepositoryV2(workingDir);
+          const repoAnalysis = await analyzeRepositoryV2(project_root);
 
           // Format targets for output
           const targetsList = Object.entries(repoAnalysis.targets || {}).map(([targetId, targetInfo]) => ({
@@ -886,7 +915,6 @@ export async function main() {
       port: progressPort,
       pid: process.pid,
       startTime: Date.now(),
-      cwd: process.cwd(),
       installations: {}
     };
 

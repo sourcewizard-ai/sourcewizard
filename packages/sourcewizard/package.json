@@ -1,6 +1,6 @@
 {
   "name": "sourcewizard",
-  "version": "0.3.8",
+  "version": "0.4.0",
   "description": "SourceWizard - AI-powered setup wizard for dev tools and libraries with MCP integration",
   "type": "module",
   "main": "dist/index.js",
@@ -12,9 +12,6 @@
     "LICENSE",
     "README.md",
     "package.json"
-  ],
-  "workspaces": [
-    "./**"
   ],
   "exports": {
     ".": "./dist/index.js",
@@ -57,8 +54,8 @@
   },
   "dependencies": {
     "@inkjs/ui": "^2.0.0",
-    "@modelcontextprotocol/sdk": "^1.18.2",
-    "@supabase/supabase-js": "^2.58.0",
+    "@modelcontextprotocol/sdk": "^1.24.3",
+    "@supabase/supabase-js": "^2.86.2",
     "@typeconf/sdk": "^0.3.2",
     "@types/commander": "^2.12.5",
     "@types/cors": "^2.8.19",
@@ -82,11 +79,11 @@
     "ink-select-input": "^6.2.0",
     "ink-spinner": "^4.0.3",
     "ink-text-input": "^6.0.0",
-    "next": "16.0.2",
+    "next": "16.0.7",
     "open": "^10.2.0",
     "ora": "^8.2.0",
     "react": "^19.2.0",
-    "react-dom": "19.2.0",
+    "react-dom": "19.2.1",
     "ts-node": "^10.9.2",
     "zod": "^3.25.76",
     "zod-error": "^1.5.0"
@@ -100,7 +97,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^24.6.2",
     "@types/react": "^19.2.0",
-    "@types/react-dom": "19.2.0",
+    "@types/react-dom": "19.2.3",
     "jest": "^30.2.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.4",

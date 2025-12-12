@@ -2,7 +2,7 @@ import { TokenStorage } from "./token-storage.js";
 import { WebAuthServer } from "./server.js";
 import { WebAuthOptions } from "./types.js";
 import open from "open";
-import { SupabaseAuthClient } from "@supabase/supabase-js/src/lib/SupabaseAuthClient.js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface AuthStatus {
   isAuthenticated: boolean;
@@ -13,10 +13,10 @@ export interface AuthStatus {
 }
 
 export class CLIAuth {
-  private auth: SupabaseAuthClient;
+  private auth: SupabaseClient["auth"];
   private tokenStorage: TokenStorage;
 
-  constructor(authInstance: SupabaseAuthClient, configDir: string) {
+  constructor(authInstance: SupabaseClient["auth"], configDir: string) {
     this.auth = authInstance;
     this.tokenStorage = new TokenStorage(configDir, authInstance);
   }

@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import { SupabaseAuthClient } from "@supabase/supabase-js/src/lib/SupabaseAuthClient.js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface StoredTokens {
   accessToken: string;
@@ -17,10 +17,10 @@ export class TokenStorage {
   private configDir: string;
   private tokenFilePath: string;
   private logsDir: string;
-  private auth?: SupabaseAuthClient;
+  private auth?: SupabaseClient["auth"];
   private refreshPromise?: Promise<StoredTokens | null>;
 
-  constructor(configDir: string, authClient?: SupabaseAuthClient) {
+  constructor(configDir: string, authClient?: SupabaseClient["auth"]) {
     // Use standard config directories based on OS
     this.configDir = path.join(os.homedir(), ".config", configDir);
     this.tokenFilePath = path.join(this.configDir, "auth.json");
@@ -31,7 +31,7 @@ export class TokenStorage {
   /**
    * Set the auth client for token refresh operations
    */
-  setAuthClient(authClient: SupabaseAuthClient): void {
+  setAuthClient(authClient: SupabaseClient["auth"]): void {
     this.auth = authClient;
   }
 

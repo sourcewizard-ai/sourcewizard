@@ -24,7 +24,10 @@ import { McpServerConfig, query, type SDKMessage } from '@anthropic-ai/claude-ag
 import { Command } from 'commander';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { select } from '@inquirer/prompts';
+import { z } from 'zod';
 import { analyzeRepositoryV2 } from 'sourcewizard/repodetect';
+import { readFileSync, existsSync } from 'fs';
+import { resolve, isAbsolute } from 'path';
 import {
   QuestionsOutputSchema,
   PlanMetadataSchema,
@@ -34,11 +37,25 @@ import {
   type QuestionsOutput,
   type IntegrationPlan,
   type PlanMetadata,
-  type SectionSummary
+  type SectionSummary,
+  Stage,
+  InternalMessage,
+  runStructuredStage,
+  runTextStage,
+  displayInternalMessage,
 } from './index.js';
 
-// Stage types for resumption
-type Stage = 'start' | 'questions' | 'plan1' | 'plan2' | 'plan3' | 'complete';
+import {
+  DocumentCompiler
+} from './docs.js';
+import { runCompile2 } from './compile2.js';
+import { registerExecuteCommand } from './execute.js';
+import { required } from 'zod/v4-mini';
+
+// Schema for document compilation output
+const DocumentOutputSchema = z.object({
+  outputFilePath: z.string().describe('The relative path to the file where the document was written')
+});
 
 interface CLIParams {
   prompt: string;
@@ -51,20 +68,6 @@ interface CLIParams {
   planId?: number; // Specific plan ID to generate (1=Medium, 2=Easy, 3=Hard)
   additionalInstructions?: string;
 }
-
-// Internal message types for display
-type InternalMessage =
-  | { type: 'tool_call'; tool_name: string; tool_params: any; tool_use_id: string }
-  | { type: 'tool_result'; tool_use_id: string; tool_response: string }
-  | { type: 'agent_response'; text: string }
-  | { type: 'status'; message: string }
-  | { type: 'questions'; questions: Question[] }
-  | { type: 'plan'; plan: IntegrationPlan }
-  | { type: 'sdk_session'; sessionId: string }
-  | { type: 'stage'; stage: Stage };
-
-// Track active tool calls to match with results
-const activeToolCalls = new Map<string, { tool_name: string; tool_params: any }>();
 
 /**
  * Output stage change message
@@ -79,21 +82,6 @@ function outputStage(stage: Stage, outputMode: 'json' | 'pretty'): void {
   }
 }
 
-function getMCPServersConfig(): Record<string, McpServerConfig> {
-  return {
-    "context7": {
-      type: "http",
-      url: "https://mcp.context7.com/mcp",
-      headers: {
-        "CONTEXT7_API_KEY": process.env.CONTEXT7_API_KEY || "",
-      },
-    },
-  }
-}
-
-function getAllowedTools(): string[] {
-  return ['Read', 'Write', 'Glob', 'Grep', 'mcp__context7__resolve-library-id', 'mcp__context7__get-library-docs'];
-}
 /**
  * Build the prompt for stage 1: Questions
  */
@@ -356,273 +344,6 @@ async function selectOptions(questions: Question[]): Promise<string> {
   }
 
   return answers.join('\n\n');
-}
-
-/**
- * Parse SDK messages into internal format
- */
-function parseSDKMessage(message: SDKMessage): InternalMessage[] {
-  const results: InternalMessage[] = [];
-
-  switch (message.type) {
-    case 'stream_event':
-      const event = message.event;
-      if (event.type === 'content_block_delta') {
-        const delta = event.delta;
-        if (delta.type === 'text_delta') {
-          results.push({ type: 'agent_response', text: delta.text });
-        }
-      }
-      break;
-
-    case 'user':
-      if (!message.isSynthetic) {
-        const content = message.message.content;
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block.type === 'tool_result') {
-              const response = typeof block.content === 'string'
-                ? block.content
-                : JSON.stringify(block.content);
-              results.push({ type: 'tool_result', tool_use_id: block.tool_use_id, tool_response: response });
-            }
-          }
-        }
-      }
-      break;
-
-    case 'assistant':
-      if (message.message.content) {
-        for (const block of message.message.content) {
-          if (block.type === 'tool_use') {
-            activeToolCalls.set(block.id, { tool_name: block.name, tool_params: block.input });
-            results.push({ type: 'tool_call', tool_name: block.name, tool_params: block.input, tool_use_id: block.id });
-          } else if (block.type === 'text') {
-            results.push({ type: 'agent_response', text: block.text });
-          }
-        }
-      }
-      break;
-
-    case 'system':
-      if (message.subtype === 'init') {
-        results.push({ type: 'status', message: `Session started (model: ${message.model})` });
-      } else if (message.subtype === 'status' && message.status) {
-        results.push({ type: 'status', message: `Status: ${message.status}...` });
-      }
-      break;
-  }
-
-  return results;
-}
-
-/**
- * Format internal message for display
- */
-function displayInternalMessage(msg: InternalMessage): void {
-  switch (msg.type) {
-    case 'tool_call':
-      const paramsStr = JSON.stringify(msg.tool_params).substring(0, 80);
-      console.error(`Tool call: ${msg.tool_name}(${paramsStr}${JSON.stringify(msg.tool_params).length > 80 ? '...' : ''})`);
-      break;
-    case 'tool_result':
-      const toolCall = activeToolCalls.get(msg.tool_use_id);
-      const toolName = toolCall ? toolCall.tool_name : 'unknown';
-      const size = msg.tool_response.length;
-      console.error(`Tool result: ${toolName} -> ${size} bytes`);
-
-      // Debug: Print full StructuredOutput content
-      if (toolName === 'StructuredOutput') {
-        console.error(`[DEBUG] StructuredOutput full response:\n'${msg.tool_response}'`);
-      }
-
-      activeToolCalls.delete(msg.tool_use_id);
-      break;
-    case 'agent_response':
-      console.error(`Agent message: ${msg.text}`);
-      break;
-    case 'status':
-      console.error(msg.message);
-      break;
-    case 'questions':
-      console.error(`\n[Received ${msg.questions.length} questions from agent]`);
-      break;
-    case 'plan':
-      console.error(`\n[Generated ${msg.plan.difficulty} plan: ${msg.plan.title}]`);
-      break;
-    case 'stage':
-      console.error(`\n[Stage: ${msg.stage}]`);
-      break;
-  }
-}
-
-/**
- * Run a stage with structured output (for questions)
- */
-async function runStructuredStage<T>(
-  prompt: string,
-  schema: any,
-  cwd: string,
-  outputMode: 'json' | 'pretty',
-  sessionId?: string
-): Promise<{ output: T; sessionId: string }> {
-  const jsonSchema = zodToJsonSchema(schema, {
-    $refStrategy: 'none',
-    target: 'jsonSchema7'
-  });
-
-  const result = query({
-    prompt,
-    options: {
-      cwd,
-      model: 'haiku',
-      settingSources: [],
-      mcpServers: getMCPServersConfig(),
-      maxTurns: 30,
-      allowedTools: getAllowedTools(),
-      outputFormat: {
-        type: 'json_schema',
-        schema: jsonSchema
-      },
-      resume: sessionId
-    }
-  });
-
-  let capturedSessionId = sessionId || '';
-  let structuredOutput: T | null = null;
-  let sessionIdOutputted = false;
-
-  for await (const message of result) {
-    if ('session_id' in message && message.session_id) {
-      const newSessionId = message.session_id;
-
-      // Only output if session ID changed or first time
-      if (capturedSessionId !== newSessionId) {
-        capturedSessionId = newSessionId;
-
-        // Output SDK session ID as internal message (once per new session)
-        if (outputMode === 'json' && !sessionIdOutputted) {
-          console.log(JSON.stringify({ type: 'sdk_session', sessionId: capturedSessionId }));
-          sessionIdOutputted = true;
-        }
-      }
-    }
-
-    if (message.type === 'result' && message.subtype === 'success') {
-      if (message.structured_output) {
-        structuredOutput = message.structured_output as T;
-      }
-    }
-
-    // Parse and display messages
-    const internalMsgs = parseSDKMessage(message);
-
-    if (outputMode === 'json') {
-      // In JSON mode, output internal messages as JSON to stdout
-      for (const internalMsg of internalMsgs) {
-        console.log(JSON.stringify(internalMsg));
-      }
-    } else {
-      // In pretty mode, display to stderr
-      for (const internalMsg of internalMsgs) {
-        displayInternalMessage(internalMsg);
-      }
-
-      if (message.type === 'result') {
-        if (message.subtype === 'success') {
-          console.error(`\nStage complete (${message.num_turns} turns, $${message.total_cost_usd.toFixed(4)})`);
-        } else {
-          console.error(`[ERROR] Agent returned error subtype: ${message.subtype}`);
-        }
-      }
-    }
-  }
-
-  if (!structuredOutput) {
-    console.error('[WARNING] No structured output received from agent - returning empty object');
-    // Return empty object instead of throwing to allow fallback handling
-    return { output: {} as T, sessionId: capturedSessionId };
-  }
-
-  return { output: structuredOutput, sessionId: capturedSessionId };
-}
-
-/**
- * Run a stage and collect text response (for plan generation)
- */
-async function runTextStage(
-  prompt: string,
-  cwd: string,
-  outputMode: 'json' | 'pretty',
-  sessionId?: string
-): Promise<{ response: string; sessionId: string }> {
-  const result = query({
-    prompt,
-    options: {
-      cwd,
-      model: 'haiku',
-      mcpServers: getMCPServersConfig(),
-      settingSources: [],
-      maxTurns: 30,
-      allowedTools: getAllowedTools(),
-      resume: sessionId
-    }
-  });
-
-  let capturedSessionId = sessionId || '';
-  let responseText = '';
-  let sessionIdOutputted = false;
-
-  for await (const message of result) {
-    if ('session_id' in message && message.session_id) {
-      const newSessionId = message.session_id;
-
-      // Only output if session ID changed or first time
-      if (capturedSessionId !== newSessionId) {
-        capturedSessionId = newSessionId;
-
-        // Output SDK session ID as internal message (once per new session)
-        if (outputMode === 'json' && !sessionIdOutputted) {
-          console.log(JSON.stringify({ type: 'sdk_session', sessionId: capturedSessionId }));
-          sessionIdOutputted = true;
-        }
-      }
-    }
-
-    // Collect text from assistant messages
-    if (message.type === 'assistant') {
-      for (const block of message.message.content) {
-        if (block.type === 'text') {
-          responseText += block.text;
-        }
-      }
-    }
-
-    // Parse and display messages
-    const internalMsgs = parseSDKMessage(message);
-
-    if (outputMode === 'json') {
-      // In JSON mode, output internal messages as JSON to stdout
-      for (const internalMsg of internalMsgs) {
-        console.log(JSON.stringify(internalMsg));
-      }
-    } else {
-      // In pretty mode, display to stderr
-      for (const internalMsg of internalMsgs) {
-        displayInternalMessage(internalMsg);
-      }
-
-      if (message.type === 'result') {
-        if (message.subtype === 'success') {
-          console.error(`\nStage complete (${message.num_turns} turns, $${message.total_cost_usd.toFixed(4)})`);
-        } else {
-          console.error(`[ERROR] Agent returned error subtype: ${message.subtype}`);
-        }
-      }
-    }
-  }
-
-  return { response: responseText, sessionId: capturedSessionId };
 }
 
 /**
@@ -944,6 +665,7 @@ async function runPlanner(params: CLIParams): Promise<void> {
   }
 }
 
+
 /**
  * Main entry point
  */
@@ -953,7 +675,12 @@ async function main() {
   program
     .name('planner-cli')
     .description('Integration planning tool using Claude Agent SDK')
-    .version('0.1.0')
+    .version('0.1.0');
+
+  // Plan subcommand (default)
+  program
+    .command('plan', { isDefault: true })
+    .description('Generate integration plans for a project')
     .requiredOption('--prompt <text>', 'User prompt describing the task')
     .option('--project-context <json>', 'Project context as JSON string')
     .option('--cwd <path>', 'Working directory (defaults to current directory)')
@@ -1008,6 +735,158 @@ async function main() {
         process.exit(1);
       }
     });
+
+  // Compile subcommand
+  program
+    .command('compile')
+    .description('Compile notes/transcripts into structured documents')
+    .requiredOption('--transcript-file <path>', 'Path to file containing transcript')
+    .requiredOption('--doc-type <type>', 'Document type: design-doc, prd, rfp, sow, technical-spec, user-story')
+    .option('--session-id <text>', 'ID of the previous session', 'session id')
+    .option('--output-mode <mode>', 'Output mode: json or pretty', 'json')
+    .option('--clarifications <text>', 'Answers to clarification questions (formatted as: 1. Question\\nAnswer: answer\\n\\n2. ...)')
+    .option('--cwd <path>', 'Working directory', process.cwd())
+    .action(async (options) => {
+      try {
+        if (options.outputMode !== 'json' && options.outputMode !== 'pretty') {
+          throw new Error('Invalid output mode. Must be "json" or "pretty"');
+        }
+
+        const compiler = new DocumentCompiler(options.cwd, options.outputMode);
+        if (!options.clarifications) {
+          const result = await compiler.clarify(options.transcriptFile, options.docType);
+
+          // Output questions using InternalMessage type
+          const questionsMessage: InternalMessage = {
+            type: 'questions',
+            questions: result.questions.questions || []
+          };
+
+          if (options.outputMode === 'json') {
+            console.log(JSON.stringify(questionsMessage));
+          } else {
+            console.log('\n=== Questions produced ===\n');
+            console.log(`Questions ${JSON.stringify(result.questions, null, 2)}`);
+          }
+          return;
+        }
+        if (!options.sessionId) {
+          throw new Error('Session ID is required to continue the document generation.');
+        }
+        const outputFilePath = await compiler.compile(options.sessionId, options.clarifications, options.transcriptFile, options.docType);
+
+        // Read the generated document
+        // Check if the path is already absolute or starts from repo root
+        let absolutePath: string;
+        if (isAbsolute(outputFilePath)) {
+          absolutePath = outputFilePath;
+        } else if (existsSync(outputFilePath)) {
+          // Path is relative to CWD where CLI is run from
+          absolutePath = resolve(outputFilePath);
+        } else {
+          // Try resolving relative to options.cwd
+          absolutePath = resolve(options.cwd, outputFilePath);
+        }
+
+        if (!existsSync(absolutePath)) {
+          throw new Error(`Document file was not generated at expected path: ${absolutePath}\nOriginal path from compiler: ${outputFilePath}`);
+        }
+
+        const documentContent = readFileSync(absolutePath, 'utf-8');
+
+        if (options.outputMode === 'json') {
+          // Create a plan message with the document content
+          const documentPlan: IntegrationPlan = {
+            id: 1,
+            title: `${options.docType.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`,
+            description: `Generated ${options.docType} document`,
+            estimatedTime: '',
+            difficulty: 'Medium',
+            sections: {
+              setup: [],
+              integration: [],
+              verification: [],
+              nextSteps: [documentContent]
+            },
+            summaries: {
+              setup: '',
+              integration: `Full ${options.docType} document`,
+              verification: '',
+              nextSteps: ''
+            }
+          };
+
+          const planMessage: InternalMessage = {
+            type: 'plan',
+            plan: documentPlan
+          };
+
+          console.log(JSON.stringify(planMessage));
+
+          // Also output complete message
+          const completeMessage: InternalMessage = {
+            type: 'complete',
+            document: outputFilePath
+          };
+          console.log(JSON.stringify(completeMessage));
+        } else {
+          console.error('\n=== Document Generated ===\n');
+          console.error(`File: ${outputFilePath}\n`);
+          console.error('---\n');
+          console.error(documentContent);
+          console.error('\n---\n');
+        }
+      } catch (error) {
+        console.error(JSON.stringify({
+          type: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : ''
+        }));
+        process.exit(1);
+      }
+    });
+
+  // Compile2 subcommand - multi-stage document generation with sections, questions, and variants
+  program
+    .command('compile2')
+    .description('Compile notes/transcripts into structured documents (multi-stage: sections → questions → variants)')
+    .requiredOption('--transcript-file <path>', 'Path to file containing transcript')
+    .requiredOption('--doc-type <type>', 'Document type: design-doc, prd, rfp, sow, technical-spec, user-story')
+    .option('--session-id <text>', 'ID of the previous session')
+    .option('--sections-file <path>', 'Path to save sections to (default: sections.json)')
+    .option('--questions-file <path>', 'Path to save questions to (default: questions.json)')
+    .option('--log-file <path>', 'Path to save log output to (default: compile.log)')
+    .option('--cwd <path>', 'Working directory (session directory)', process.cwd())
+    .action(async (options) => {
+      try {
+        const result = await runCompile2({
+          transcriptFile: options.transcriptFile,
+          docType: options.docType,
+          sessionId: options.sessionId,
+          sectionsFile: options.sectionsFile,
+          questionsFile: options.questionsFile,
+          logFile: options.logFile,
+          cwd: options.cwd
+        });
+
+        // Output result to stdout for API consumption
+        console.log(JSON.stringify(result));
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorStack = error instanceof Error ? error.stack : '';
+
+        console.error(JSON.stringify({
+          type: 'error',
+          error: errorMessage,
+          stack: errorStack
+        }));
+
+        process.exit(1);
+      }
+    });
+
+  // Register execute subcommand
+  registerExecuteCommand(program);
 
   await program.parseAsync(process.argv);
 }

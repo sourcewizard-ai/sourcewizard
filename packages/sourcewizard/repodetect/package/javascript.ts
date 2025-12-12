@@ -27,6 +27,7 @@ async function detectPackageManager(packagePath: string): Promise<string> {
 
   // First, find the workspace root by going up the directory tree
   const workspaceRoot = await findWorkspaceRoot(packagePath);
+  console.log(workspaceRoot + " " + packagePath);
 
   // First priority: Check all package.json files for workspace: dependencies
   const hasWorkspaceDeps = await checkForWorkspaceDependencies(workspaceRoot);
